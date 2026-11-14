@@ -1,5 +1,13 @@
 # Changelog
 
+## AATorqueReborn 2.6.1
+
+- "Mazda Style" car background (800×400, original, drawn by `tools/make_mazda_theme.py`).
+  Pick it under Settings → Default background (the app does not switch backgrounds with the
+  theme).
+- New font "Barlow Semi Condensed" (SIL Open Font License 1.1, from github.com/jpt/barlow).
+  The licence ships in the APK at `app/src/main/assets/licenses/Barlow-OFL.txt`.
+
 ## AATorqueReborn 2.6.0
 
 Fork of YuhiAida/aa-torque 2.5.0 (`d740bed`). Same package id (`com.aatorque.stats`), signed

@@ -522,7 +522,7 @@
 
     <!-- Original artwork, rendered by tools/make_mazda_theme.py. No logo, wordmark or font. -->
     <style name="AppTheme.Mazda" parent="AppTheme">
-        <item name="themedCarBackground">@drawable/background_incar_black</item>
+        <item name="themedCarBackground">@drawable/background_incar_mazda</item>
         <item name="themedDialBackground">@drawable/dial_background_marks_mazda</item>
         <item name="themedEmptyDialBackground">@drawable/dial_background_empty_mazda</item>
         <item name="themedBlankDialBackground">@drawable/dial_background_blank_mazda</item>

@@ -16,9 +16,12 @@ Needs Pillow. Run from the repository root:
 import math
 import pathlib
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-OUT = pathlib.Path(__file__).resolve().parent.parent / "app/src/main/res/drawable"
+RES = pathlib.Path(__file__).resolve().parent.parent / "app/src/main/res"
+OUT = RES / "drawable"
+FONT = RES / "font/barlow_semi_condensed.ttf"
+BG_W, BG_H = 800, 400
 SIZE = 480
 SS = 4  # supersampling factor for smooth edges
 C = SIZE / 2
@@ -187,6 +190,53 @@ def thumbnail(dial_img: Image.Image, needle_img: Image.Image) -> Image.Image:
     return out.resize((128, 128), Image.LANCZOS)
 
 
+def background() -> Image.Image:
+    """800x400 car background: graphite black, a soft lift behind the gauges, two faint satin
+    sweeps and a low crimson glow. Kept dark so gauges stay readable in sunlight."""
+    w, h = BG_W * 2, BG_H * 2
+    img = Image.new("RGB", (w, h), FACE_EDGE)
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            # Elliptical lift, centred slightly above the middle where the gauges sit.
+            d = math.hypot((x - w / 2) / (w * 0.55), (y - h * 0.45) / (h * 0.75))
+            t = max(0.0, 1.0 - d)
+            px[x, y] = tuple(int(FACE_EDGE[i] + (FACE_CENTRE[i] - FACE_EDGE[i]) * t) for i in range(3))
+    img = img.convert("RGBA")
+
+    sweeps = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(sweeps)
+    # Two long, shallow arcs crossing the screen: a hint of reflected light, nothing more.
+    draw.arc([-w * 0.3, h * 0.10, w * 1.3, h * 2.2], 200, 340, fill=(255, 255, 255, 22), width=5)
+    draw.arc([-w * 0.2, h * 0.30, w * 1.2, h * 2.6], 205, 335, fill=(255, 255, 255, 12), width=3)
+    sweeps = sweeps.filter(ImageFilter.GaussianBlur(3))
+    img.alpha_composite(sweeps)
+
+    glow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    gdraw = ImageDraw.Draw(glow)
+    gdraw.ellipse([w * 0.25, h * 0.92, w * 0.75, h * 1.12], fill=(*CRIMSON, 70))
+    glow = glow.filter(ImageFilter.GaussianBlur(40))
+    img.alpha_composite(glow)
+    return img.resize((BG_W, BG_H), Image.LANCZOS).convert("RGB")
+
+
+def background_thumb(bg: Image.Image) -> Image.Image:
+    side = BG_H
+    left = (BG_W - side) // 2
+    return bg.crop((left, 0, left + side, side)).resize((128, 128), Image.LANCZOS)
+
+
+def font_thumb() -> Image.Image:
+    """Same layout as the other font thumbnails: "123" over "Abc", black on transparent (the
+    app tints it)."""
+    img = Image.new("RGBA", (128 * SS, 128 * SS), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype(str(FONT), 52 * SS)
+    draw.text((10 * SS, -6 * SS), "123", font=font, fill=(0, 0, 0, 255))
+    draw.text((10 * SS, 58 * SS), "Abc", font=font, fill=(0, 0, 0, 255))
+    return img.resize((128, 128), Image.LANCZOS)
+
+
 def main() -> None:
     marks = dial(with_ticks=True, with_inner=True)
     empty = dial(with_ticks=False, with_inner=True)
@@ -198,7 +248,11 @@ def main() -> None:
         "dial_background_blank_mazda.png": blank,
         "needle_mazda.png": pointer,
         "ic_theme_mazda.png": thumbnail(marks, pointer),
+        "ic_font_barlow.png": font_thumb(),
     }
+    bg = background()
+    files["background_incar_mazda.png"] = bg
+    files["thumb_background_incar_mazda.png"] = background_thumb(bg)
     for name, image in files.items():
         image.save(OUT / name, optimize=True)
         print("wrote", OUT / name)

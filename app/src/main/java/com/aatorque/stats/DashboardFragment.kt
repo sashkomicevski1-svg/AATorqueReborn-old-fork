@@ -690,6 +690,7 @@ open class DashboardFragment : AlbumArt() {
             "larabie" -> R.font.larabie
             "ford" -> R.font.unitedsans
             "ev" -> R.font.ev
+            "barlow" -> R.font.barlow_semi_condensed
             else -> R.font.digital
         }
         settingsViewModel.setFont(font)

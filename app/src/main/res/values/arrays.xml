@@ -103,6 +103,7 @@
         <item>@string/font_larabie</item>
         <item>@string/font_ford</item>
 	<item>@string/font_ev</item>
+        <item>@string/font_barlow</item>
     </string-array>
 
     <string-array name="fontValues">
@@ -117,6 +118,7 @@
         <item>larabie</item>
         <item>ford</item>
         <item>ev</item>
+        <item>barlow</item>
     </string-array>
 
     <string-array name="FontThumbs">
@@ -131,6 +133,7 @@
         <item>@drawable/ic_font_larabie</item>
         <item>@drawable/ic_font_ford</item>
         <item>@drawable/ic_font_ev</item>
+        <item>@drawable/ic_font_barlow</item>
     </string-array>
 
     <integer-array name="icons">
@@ -307,6 +310,7 @@
         <item>@drawable/thumb_background_incar_ev</item>
         <item>@drawable/thumb_background_incar_test</item>
         <item>@drawable/thumb_background_incar_bolt</item>
+        <item>@drawable/thumb_background_incar_mazda</item>
     </array>
 
     <string-array name="backgroundstrings">
@@ -333,6 +337,7 @@
         <item>@string/bg_ev</item>
         <item>@string/bg_test</item>
         <item>@string/bg_bolt</item>
+        <item>@string/bg_mazda</item>
     </string-array>
 
     <array name="backgrounds">
@@ -359,6 +364,7 @@
         <item>background_incar_ev</item>
         <item>background_incar_test</item>
         <item>background_incar_bolt</item>
+        <item>background_incar_mazda</item>
     </array>
     <string-array name="minmax_enum_value">
         <item>0</item>
