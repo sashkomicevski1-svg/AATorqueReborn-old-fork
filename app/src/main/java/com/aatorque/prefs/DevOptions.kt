@@ -23,4 +23,19 @@ object DevOptions {
     fun setSimulateValues(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(SIMULATE_VALUES, enabled).apply()
     }
+
+    const val QUIT_TORQUE_ON_EXIT = "quitTorqueOnExit"
+    const val REFRESH_INTERVAL_MS = "refreshIntervalMs"
+    const val DIAGNOSTICS = "connectionDiagnostics"
+    const val DEFAULT_REFRESH_MS = 150L
+
+    /** Off by default: the user's own routine decides when Torque closes. */
+    fun quitTorqueOnExit(context: Context): Boolean =
+        prefs(context).getBoolean(QUIT_TORQUE_ON_EXIT, false)
+
+    fun refreshIntervalMs(context: Context): Long =
+        prefs(context).getString(REFRESH_INTERVAL_MS, null)?.toLongOrNull()
+            ?.coerceIn(50L, 2_000L) ?: DEFAULT_REFRESH_MS
+
+    fun diagnostics(context: Context): Boolean = prefs(context).getBoolean(DIAGNOSTICS, true)
 }

@@ -32,7 +32,13 @@ enum class ConnectStatus {
      * Torque Pro still answers but the ECU does not. The last values stay on screen, marked
      * as no longer live, instead of passing for a live reading. See issue #161.
      */
-    STALE
+    STALE,
+
+    /**
+     * Torque Pro was connected and went away (killed, force-stopped, updated). The binding
+     * rebuilds itself; until then the last values stay on screen marked as not live.
+     */
+    TORQUE_LOST
 }
 
 class TorqueRefresher {
@@ -41,7 +47,7 @@ class TorqueRefresher {
     /** True while the developer option simulates values instead of reading Torque. */
     var simulate = false
 
-    private val executor = ScheduledThreadPoolExecutor(1)
+    private var executor: ScheduledThreadPoolExecutor? = null
     val handler = Handler(Looper.getMainLooper())
     private var conWatcher = MutableStateFlow(ConnectStatus.CONNECTING_TORQUE)
     val connectStatus = conWatcher.asSharedFlow()
@@ -87,7 +93,8 @@ class TorqueRefresher {
             // One task for the whole dashboard: every gauge is read and applied in the same
             // tick, so they share a phase and move on the same frame.
             Timber.i("Scheduling the dashboard refresh for ${targets.size} items")
-            refreshTimer = executor.scheduleWithFixedDelay({
+            val pool = executor ?: ScheduledThreadPoolExecutor(1).also { executor = it }
+            refreshTimer = pool.scheduleWithFixedDelay({
                 try {
                     refreshDashboard(service)
                 } catch (e: Exception) {
@@ -158,6 +165,10 @@ class TorqueRefresher {
             targets.forEach { doRefresh(service, it) }
             return
         }
+        if (service.torqueService == null) {
+            reportTorqueLostIfWasConnected()
+            return
+        }
         service.runIfConnected { ts ->
             // Ask before the read: Torque answers from its own cache after the adapter is
             // gone, so a read alone cannot tell live data from the last frame. See issue #161.
@@ -169,6 +180,11 @@ class TorqueRefresher {
                 ts.getPIDValuesAsDouble(pids.toTypedArray())
             } catch (e: Exception) {
                 Timber.e(e, "Torque failed the batched dashboard refresh")
+                service.onCallFailed(e)
+                if (service.torqueService == null) {
+                    reportTorqueLostIfWasConnected()
+                    return@runIfConnected
+                }
                 null
             }
             if (values == null || values.size != targets.size) {
@@ -213,6 +229,10 @@ class TorqueRefresher {
             } catch (e: ArrayIndexOutOfBoundsException) {
                 Timber.e("Torque returned invalid data for ${torqueData.pid}")
                 return@runIfConnected
+            } catch (e: android.os.RemoteException) {
+                Timber.e(e, "Torque failed the read for ${torqueData.pid}")
+                service.onCallFailed(e)
+                return@runIfConnected
             }
             torqueData.lastData = value
             Timber.d("Got valid $value from torque for ${torqueData.display.label}")
@@ -229,6 +249,19 @@ class TorqueRefresher {
         }
     }
 
+    /**
+     * Torque went away after it had answered. A state that says Torque was never there
+     * (missing, refused) is kept, since the rebind cannot change that by itself.
+     */
+    private fun reportTorqueLostIfWasConnected() {
+        when (conWatcher.value) {
+            ConnectStatus.CONNECTED, ConnectStatus.STALE, ConnectStatus.CONNECTING_ECU ->
+                conWatcher.tryEmit(ConnectStatus.TORQUE_LOST)
+
+            else -> Unit
+        }
+    }
+
     private fun activeTargets(): List<TorqueData> =
         synchronized(data) { data.values.filter { it.pid != null } }
 
@@ -236,6 +269,13 @@ class TorqueRefresher {
         Timber.i("Telling Torque refreshers to stop")
         stopRefreshTimer()
         synchronized(data) { data.values.toList() }.forEach { it.stopRefreshing() }
+    }
+
+    /** Stop polling for good and release the worker thread. */
+    fun shutdown() {
+        stopExecutors()
+        executor?.shutdownNow()
+        executor = null
     }
 
     private fun stopRefreshTimer() {

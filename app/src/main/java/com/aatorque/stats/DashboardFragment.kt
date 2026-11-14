@@ -29,6 +29,7 @@ import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.InputDeviceCompat
 import androidx.fragment.app.FragmentContainerView
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -63,7 +64,7 @@ open class DashboardFragment : AlbumArt() {
                 context?.let { torqueRefresher.simulate = DevOptions.simulateValues(it) }
             }
         }
-    private val torqueService = TorqueService()
+    private lateinit var torqueService: TorqueService
 
     private lateinit var mBtnNext: ImageButton
     private lateinit var mBtnPrev: ImageButton
@@ -132,7 +133,10 @@ open class DashboardFragment : AlbumArt() {
         val context = requireContext()
         torqueRefresher.simulate = DevOptions.simulateValues(context)
         DevOptions.prefs(context).registerOnSharedPreferenceChangeListener(devPrefListener)
-        if (!torqueService.startTorque(context) && !torqueRefresher.simulate) {
+        // The binding is shared and outlives this fragment: a theme change swaps the fragment
+        // but must not drop Torque. See TorqueConnections.
+        torqueService = TorqueConnections.acquire(context)
+        if (!torqueService.lastBindOk && !torqueRefresher.simulate) {
             // bindService returns false for a missing app, a missing permission and a service
             // that refuses the caller. Only the missing package is a fact worth stating.
             if (isTorqueInstalled(context)) {
@@ -216,7 +220,9 @@ open class DashboardFragment : AlbumArt() {
                         displays[index]?.setupElement(td)
                     }
                 }
-                torqueRefresher.makeExecutors(torqueService)
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    torqueRefresher.makeExecutors(torqueService)
+                }
             }
         }
         registerWithView { data ->
@@ -281,6 +287,7 @@ open class DashboardFragment : AlbumArt() {
                     ConnectStatus.NO_TORQUE -> R.string.status_no_torque
                     ConnectStatus.TORQUE_UNAVAILABLE -> R.string.status_torque_unavailable
                     ConnectStatus.STALE -> R.string.status_ecu_lost
+                    ConnectStatus.TORQUE_LOST -> R.string.status_torque_lost
                     ConnectStatus.CONNECTED -> null
                 }
             }
@@ -461,39 +468,44 @@ open class DashboardFragment : AlbumArt() {
         sc.hideTitle()
     }
 
+    // Polling follows STARTED, not RESUMED: Android Auto pauses the car screen for overlays
+    // and other transient states that still leave the dashboard visible.
     override fun onResume() {
-        Timber.d("onResume")
+        Timber.i("Lifecycle: dashboard onResume")
         super.onResume()
+    }
+
+    override fun onStart() {
+        Timber.i("Lifecycle: dashboard onStart")
+        super.onStart()
         lifecycleScope.launch {
+            viewReady.countDown()
             torqueRefresher.makeExecutors(torqueService)
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        lifecycleScope.launch {
-            viewReady.countDown()
-        }
-    }
-
     override fun onStop() {
+        Timber.i("Lifecycle: dashboard onStop")
         super.onStop()
         mStarted = false
-    }
-
-    override fun onPause() {
-        Timber.d("onPause")
-        super.onPause()
         torqueRefresher.stopExecutors()
     }
 
+    override fun onPause() {
+        Timber.i("Lifecycle: dashboard onPause")
+        super.onPause()
+    }
+
     override fun onDestroy() {
+        Timber.i("Lifecycle: dashboard onDestroy")
         super.onDestroy()
         context?.let {
             DevOptions.prefs(it).unregisterOnSharedPreferenceChangeListener(devPrefListener)
         }
-        torqueService.onDestroy(requireContext())
-        torqueService.requestQuit(requireContext())
+        torqueRefresher.shutdown()
+        // Releases this fragment's share of the binding only. Torque keeps running; quitting
+        // it is an opt-in that only the car activity acts on when Android Auto ends.
+        TorqueConnections.release()
     }
 
     override suspend fun onMediaChanged(medadata: MediaMetadata?) {

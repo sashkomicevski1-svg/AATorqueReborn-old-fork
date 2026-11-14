@@ -12,4 +12,30 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="@string/developer_torque">
+
+        <CheckBoxPreference
+            android:defaultValue="false"
+            android:key="quitTorqueOnExit"
+            android:persistent="false"
+            android:summary="@string/developer_quit_torque_summary"
+            android:title="@string/developer_quit_torque_title" />
+
+        <ListPreference
+            android:defaultValue="150"
+            android:entries="@array/refreshIntervals"
+            android:entryValues="@array/refreshIntervals"
+            android:key="refreshIntervalMs"
+            android:persistent="false"
+            android:title="@string/developer_refresh_title" />
+
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="connectionDiagnostics"
+            android:persistent="false"
+            android:summary="@string/developer_diagnostics_summary"
+            android:title="@string/developer_diagnostics_title" />
+
+    </PreferenceCategory>
+
 </PreferenceScreen>

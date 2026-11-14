@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.aatorque.prefs.DevOptions
 import com.aatorque.prefs.dataStore
 import com.aatorque.prefs.mapTheme
 import com.google.android.apps.auto.sdk.CarActivity
@@ -26,6 +27,7 @@ class MainCarActivity : CarActivity() {
     private var inBg = false
     private var awaitingTheme: String? = null
     private var lastTheme: String? = null
+    private var torqueService: TorqueService? = null
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event?.action == KeyEvent.ACTION_DOWN) {
@@ -40,6 +42,10 @@ class MainCarActivity : CarActivity() {
 
     override fun onCreate(bundle: Bundle?) {
         super.onCreate(bundle)
+        Timber.i("Lifecycle: car activity onCreate")
+        // Hold the Torque binding for the whole Android Auto session. Dashboard fragments come
+        // and go (a theme change replaces one), and the binding must not go with them.
+        torqueService = TorqueConnections.acquire(this)
         // Read the first value off the main thread. DataStore emits its default immediately,
         // so setupUi() runs in the next main-thread task.
         mainScope.launch {
@@ -100,15 +106,39 @@ class MainCarActivity : CarActivity() {
         return false
     }
 
+    override fun onStart() {
+        super.onStart()
+        Timber.i("Lifecycle: car activity onStart")
+    }
+
+    override fun onStop() {
+        Timber.i("Lifecycle: car activity onStop")
+        super.onStop()
+    }
+
+    override fun onPause() {
+        Timber.i("Lifecycle: car activity onPause")
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
+        Timber.i("Lifecycle: car activity onResume")
         inBg = false
         awaitingTheme?.let(this::recreateWithTheme)
         awaitingTheme = null
     }
 
     override fun onDestroy() {
+        Timber.i("Lifecycle: car activity onDestroy")
         mainScope.cancel()
+        // The car screen is gone, so this is the end of the Android Auto session. Quitting
+        // Torque is opt-in (Developer options), off by default.
+        if (DevOptions.quitTorqueOnExit(this)) {
+            torqueService?.requestQuit(this)
+        }
+        torqueService = null
+        TorqueConnections.release()
         super.onDestroy()
     }
 
