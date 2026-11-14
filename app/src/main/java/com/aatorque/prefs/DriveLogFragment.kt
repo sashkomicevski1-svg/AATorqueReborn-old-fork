@@ -78,9 +78,33 @@ private fun DriveLog() {
     val context = LocalContext.current
     val records = remember { CarSession.dpfHistory(context).load().reversed() }
     val summary = remember(records) { RegenSummary.of(records) }
+    val dtc = remember { CarSession.dtcStore(context).load().lastOrNull() }
     val dateFormat = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
 
     LazyColumn(modifier = Modifier.padding(16.dp)) {
+        item {
+            Text(stringResource(R.string.dtc_title), style = MaterialTheme.typography.titleLarge)
+            if (dtc == null) {
+                Text(stringResource(R.string.dtc_never))
+            } else {
+                Text(stringResource(R.string.dtc_last_read, dateFormat.format(Date(dtc.wall))))
+                if (dtc.codes.isEmpty()) Text(stringResource(R.string.dtc_none))
+                dtc.codes.forEach { c ->
+                    val pending = if (c.pending) {
+                        " (" + stringResource(
+                            R.string.dtc_pending
+                        ) + ")"
+                    } else {
+                        ""
+                    }
+                    Text(
+                        "${c.code}$pending  ${c.description}",
+                        color = if (c.pending) Color(0xFFF2A900) else Color(0xFFE3242B)
+                    )
+                }
+            }
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+        }
         item {
             Text(
                 stringResource(R.string.drive_log_dpf),

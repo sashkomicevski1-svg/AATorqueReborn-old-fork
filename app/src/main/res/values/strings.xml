@@ -168,6 +168,15 @@
     <string name="status_setup_gauges">Add gauges in the AA Torque settings on your phone.</string>
     <string name="status_no_torque">Torque Pro is not installed. Install it on your phone.</string>
     <string name="status_ecu_lost">Values are not live. Check the OBD adapter.</string>
+    <string name="dtc_title">Fault codes</string>
+    <string name="dtc_enabled_title">Read fault codes</string>
+    <string name="dtc_enabled_summary">Read stored and pending engine fault codes 20 s after connecting, then every 5 minutes, and show them on the car screen. Needs "Allow plugins full access" in Torque. Read only: codes are never cleared.</string>
+    <string name="dtc_one">Fault code %1$s: %2$s</string>
+    <string name="dtc_many">Fault codes: %1$s</string>
+    <string name="dtc_none">No fault codes</string>
+    <string name="dtc_last_read">Last read %1$s</string>
+    <string name="dtc_never">Not read yet</string>
+    <string name="dtc_pending">pending</string>
     <string name="dpf_assistant">DPF assistant</string>
     <string name="dpf_assistant_summary">Regeneration status on the car screen, spoken messages, history</string>
     <string name="dpf_enabled_title">DPF assistant</string>

@@ -15,6 +15,7 @@ import timber.log.Timber
  */
 object CarSession {
     private const val ROLE_RETRY_MS = 60_000L
+    private const val KEY_DTC = "dtc"
 
     private var appContext: Context? = null
 
@@ -26,6 +27,7 @@ object CarSession {
     private var roles: Map<PidRole, String> = emptyMap()
     private var rolesTriedAt = 0L
     private var dpf: DpfMonitor? = null
+    private var dtc: DtcMonitor? = null
 
     private val androidOutputs = object : DpfOutputs {
         override fun notice(key: String, notice: CarNotices.Notice?) {
@@ -36,6 +38,13 @@ object CarSession {
         override fun showScreen(screen: Int) = CarScreenEvents.show(screen)
         override fun releaseScreen(screen: Int) = CarScreenEvents.release(screen)
     }
+
+    fun dtcStore(context: Context) = JsonHistory(
+        File(context.filesDir, "dtc_last.json"),
+        1,
+        DtcReading::toJson,
+        DtcReading::fromJson
+    )
 
     fun dpfHistory(context: Context) = JsonHistory(
         File(context.filesDir, "dpf_history.json"),
@@ -61,6 +70,24 @@ object CarSession {
                 voice = DpfSettings.voice(app)
             )
         }
+        dtc = if (!DpfSettings.dtcEnabled(app)) {
+            null
+        } else {
+            DtcMonitor(
+                dtcStore(app),
+                notice = { n ->
+                    if (n ==
+                        null
+                    ) {
+                        CarNotices.remove(KEY_DTC)
+                    } else {
+                        CarNotices.post(KEY_DTC, n)
+                    }
+                },
+                speak = { VoiceAlerts.speak(it) },
+                texts = { codes -> dtcText(app, codes) }
+            )
+        }
         running = true
         Timber.i("Session: started")
     }
@@ -71,6 +98,7 @@ object CarSession {
         running = false
         dpf?.onSessionEnd(System.currentTimeMillis(), SystemClock.elapsedRealtime())
         dpf = null
+        dtc = null
         CarNotices.clear()
         Timber.i("Session: ended")
     }
@@ -96,6 +124,7 @@ object CarSession {
         synchronized(this) {
             dpf?.update(readings, System.currentTimeMillis(), nowElapsed)
         }
+        if (ts != null) dtc?.maybeRead(ts, nowElapsed, System.currentTimeMillis())
         CarNotices.expire(nowElapsed)
     }
 
@@ -120,6 +149,15 @@ object CarSession {
         }
     }
 
+    private fun dtcText(context: Context, codes: List<Dtc>): String {
+        val one = codes.singleOrNull()
+        return if (one != null && one.description.isNotEmpty()) {
+            context.getString(R.string.dtc_one, one.code, one.description)
+        } else {
+            context.getString(R.string.dtc_many, codes.joinToString { it.code })
+        }
+    }
+
     private fun dpfTexts(context: Context) = DpfTexts(
         active = { elapsed, km, detail ->
             context.getString(R.string.dpf_active, elapsed, km, detail)
@@ -134,6 +172,7 @@ object CarSession {
 /** The DPF assistant's own settings (Settings → DPF assistant). */
 object DpfSettings {
     const val ENABLED = "dpfEnabled"
+    const val DTC_ENABLED = "dtcEnabled"
     const val VOICE = "dpfVoice"
     const val SCREEN = "dpfScreen"
 
@@ -141,6 +180,8 @@ object DpfSettings {
         context.getSharedPreferences(PidRoles.PREFS, Context.MODE_PRIVATE)
 
     fun enabled(context: Context) = prefs(context).getBoolean(ENABLED, true)
+
+    fun dtcEnabled(context: Context) = prefs(context).getBoolean(DTC_ENABLED, true)
 
     fun voice(context: Context) = prefs(context).getBoolean(VOICE, true)
 

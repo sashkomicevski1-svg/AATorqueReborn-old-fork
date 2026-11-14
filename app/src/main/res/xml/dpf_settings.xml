@@ -32,6 +32,16 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="@string/dtc_title">
+
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="dtcEnabled"
+            android:summary="@string/dtc_enabled_summary"
+            android:title="@string/dtc_enabled_title" />
+
+    </PreferenceCategory>
+
     <PreferenceCategory
         android:key="dpfPids"
         android:summary="@string/dpf_pids_summary"
