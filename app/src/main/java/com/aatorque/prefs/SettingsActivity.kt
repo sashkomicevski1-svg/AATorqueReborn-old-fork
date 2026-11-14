@@ -55,6 +55,16 @@ class SettingsActivity :
         lifecycleScope.launch(Dispatchers.IO) {
             checkUpdate()
         }
+        // The trip summary after each drive is a notification (Android 13+ asks first).
+        if (savedInstanceState == null && android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 42)
+        }
         supportFragmentManager.registerFragmentLifecycleCallbacks(
             object : FragmentManager.FragmentLifecycleCallbacks() {
                 override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
@@ -80,7 +90,7 @@ class SettingsActivity :
                         }
 
                         is DpfSettingsFragment -> {
-                            resources.getString(R.string.dpf_assistant)
+                            resources.getString(R.string.car_assistant)
                         }
 
                         is DriveLogFragment -> {

@@ -26,6 +26,7 @@ import androidx.fragment.app.Fragment
 import com.aatorque.stats.CarSession
 import com.aatorque.stats.R
 import com.aatorque.stats.RegenRecord
+import com.aatorque.stats.TripNotifier
 import com.aatorque.ui.AppTheme
 import java.text.DateFormat
 import java.util.Date
@@ -79,6 +80,7 @@ private fun DriveLog() {
     val records = remember { CarSession.dpfHistory(context).load().reversed() }
     val summary = remember(records) { RegenSummary.of(records) }
     val dtc = remember { CarSession.dtcStore(context).load().lastOrNull() }
+    val trips = remember { CarSession.tripHistory(context).load().takeLast(20).reversed() }
     val dateFormat = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
 
     LazyColumn(modifier = Modifier.padding(16.dp)) {
@@ -107,8 +109,29 @@ private fun DriveLog() {
         }
         item {
             Text(
+                stringResource(R.string.drive_log_trips),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+            if (trips.isEmpty()) Text(stringResource(R.string.drive_log_no_trips))
+        }
+        items(trips) { t ->
+            val (title, body) = TripNotifier.text(context, t)
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Text(
+                    dateFormat.format(Date(t.startWall)),
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Text(title)
+                if (body.isNotEmpty()) Text(body)
+                Divider(modifier = Modifier.padding(top = 6.dp))
+            }
+        }
+        item {
+            Text(
                 stringResource(R.string.drive_log_dpf),
-                style = MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(top = 16.dp)
             )
             Text(
                 stringResource(

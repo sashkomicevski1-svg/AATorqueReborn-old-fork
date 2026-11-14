@@ -28,6 +28,7 @@ object CarSession {
     private var rolesTriedAt = 0L
     private var dpf: DpfMonitor? = null
     private var dtc: DtcMonitor? = null
+    private var trip: TripRecorder? = null
 
     private val androidOutputs = object : DpfOutputs {
         override fun notice(key: String, notice: CarNotices.Notice?) {
@@ -38,6 +39,13 @@ object CarSession {
         override fun showScreen(screen: Int) = CarScreenEvents.show(screen)
         override fun releaseScreen(screen: Int) = CarScreenEvents.release(screen)
     }
+
+    fun tripHistory(context: Context) = JsonHistory(
+        File(context.filesDir, "trips.json"),
+        100,
+        TripRecord::toJson,
+        TripRecord::fromJson
+    )
 
     fun dtcStore(context: Context) = JsonHistory(
         File(context.filesDir, "dtc_last.json"),
@@ -88,6 +96,11 @@ object CarSession {
                 texts = { codes -> dtcText(app, codes) }
             )
         }
+        trip = if (DpfSettings.tripEnabled(app)) {
+            TripRecorder(System.currentTimeMillis(), SystemClock.elapsedRealtime())
+        } else {
+            null
+        }
         running = true
         Timber.i("Session: started")
     }
@@ -96,21 +109,19 @@ object CarSession {
     fun end() {
         if (!running) return
         running = false
-        dpf?.onSessionEnd(System.currentTimeMillis(), SystemClock.elapsedRealtime())
+        val nowElapsed = SystemClock.elapsedRealtime()
+        dpf?.onSessionEnd(System.currentTimeMillis(), nowElapsed)
+        finishTrip(nowElapsed)
         dpf = null
         dtc = null
+        trip = null
         CarNotices.clear()
         Timber.i("Session: ended")
     }
 
     /** PIDs read for the session's features, besides the visible gauges. */
-    fun monitorPids(): Collection<String> = if (running &&
-        dpf != null
-    ) {
-        roles.values
-    } else {
-        emptyList()
-    }
+    fun monitorPids(): Collection<String> =
+        if (running && (dpf != null || trip != null)) roles.values else emptyList()
 
     /** Called by the car dashboard's refresh thread after each successful read. */
     fun onTick(ts: ITorqueService?, byPid: Map<String, TorqueData>, nowElapsed: Long) {
@@ -123,6 +134,7 @@ object CarSession {
         }
         synchronized(this) {
             dpf?.update(readings, System.currentTimeMillis(), nowElapsed)
+            trip?.update(readings, nowElapsed)
         }
         if (ts != null) dtc?.maybeRead(ts, nowElapsed, System.currentTimeMillis())
         CarNotices.expire(nowElapsed)
@@ -146,6 +158,22 @@ object CarSession {
             Timber.i("Session: PID roles $roles (from ${ids.size} Torque PIDs)")
         } catch (e: Exception) {
             Timber.e(e, "Session: could not list Torque PIDs")
+        }
+    }
+
+    private fun finishTrip(nowElapsed: Long) {
+        val recorder = trip ?: return
+        val context = appContext ?: return
+        try {
+            val regens = dpfHistory(context).load().filter { it.startWall >= recorder.startWall }
+            val codes = dtcStore(context).load().lastOrNull()?.codes?.map { it.code }.orEmpty()
+            val record = recorder.finish(nowElapsed, regens, codes)
+            val history = tripHistory(context)
+            history.save(history.load() + record)
+            Timber.i("Trip: $record")
+            TripNotifier.post(context, record)
+        } catch (e: Exception) {
+            Timber.e(e, "Trip: could not finish")
         }
     }
 
@@ -173,6 +201,7 @@ object CarSession {
 object DpfSettings {
     const val ENABLED = "dpfEnabled"
     const val DTC_ENABLED = "dtcEnabled"
+    const val TRIP_ENABLED = "tripEnabled"
     const val VOICE = "dpfVoice"
     const val SCREEN = "dpfScreen"
 
@@ -182,6 +211,8 @@ object DpfSettings {
     fun enabled(context: Context) = prefs(context).getBoolean(ENABLED, true)
 
     fun dtcEnabled(context: Context) = prefs(context).getBoolean(DTC_ENABLED, true)
+
+    fun tripEnabled(context: Context) = prefs(context).getBoolean(TRIP_ENABLED, true)
 
     fun voice(context: Context) = prefs(context).getBoolean(VOICE, true)
 

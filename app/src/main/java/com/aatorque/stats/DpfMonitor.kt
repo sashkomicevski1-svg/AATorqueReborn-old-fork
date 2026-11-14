@@ -149,7 +149,7 @@ class DpfMonitor(
     private var startElapsed = 0L
     private var startTotalKm: Double? = null
     private var integratedKm = 0.0
-    private var lastSpeedElapsed = 0L
+    private var lastSpeedElapsed: Long? = null
 
     companion object {
         const val KEY_ACTIVE = "dpf.active"
@@ -185,11 +185,12 @@ class DpfMonitor(
     }
 
     private fun integrateSpeed(speedKmh: Double?, nowElapsed: Long) {
-        if (speedKmh != null && lastSpeedElapsed != 0L && active) {
-            val dt = (nowElapsed - lastSpeedElapsed).coerceIn(0L, 5_000L)
+        val previousAt = lastSpeedElapsed
+        if (speedKmh != null && previousAt != null && active) {
+            val dt = (nowElapsed - previousAt).coerceIn(0L, 5_000L)
             integratedKm += speedKmh * dt / 3_600_000.0
         }
-        lastSpeedElapsed = if (speedKmh != null) nowElapsed else 0L
+        lastSpeedElapsed = if (speedKmh != null) nowElapsed else null
     }
 
     private fun distanceKm(readings: Map<PidRole, Double>): Double {

@@ -32,6 +32,16 @@
 
     </PreferenceCategory>
 
+    <PreferenceCategory android:title="@string/trip_settings">
+
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="tripEnabled"
+            android:summary="@string/trip_enabled_summary"
+            android:title="@string/trip_enabled_title" />
+
+    </PreferenceCategory>
+
     <PreferenceCategory android:title="@string/dtc_title">
 
         <CheckBoxPreference
