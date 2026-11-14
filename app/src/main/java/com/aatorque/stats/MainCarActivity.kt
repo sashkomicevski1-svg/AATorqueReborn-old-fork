@@ -9,7 +9,6 @@ import android.content.IntentFilter
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.aatorque.prefs.DevOptions
 import com.aatorque.prefs.dataStore
 import com.aatorque.prefs.mapTheme
@@ -42,11 +41,8 @@ class MainCarActivity : CarActivity() {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event?.action == KeyEvent.ACTION_DOWN) {
-            val intent = Intent("KEY_DOWN").apply {
-                Timber.i("Key down $keyCode")
-                putExtra("KEY_CODE", keyCode)
-            }
-            LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+            Timber.i("Key down $keyCode")
+            CarKeyEvents.emit(keyCode)
         }
         return super.onKeyDown(keyCode, event)
     }

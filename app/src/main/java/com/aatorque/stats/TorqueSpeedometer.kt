@@ -21,6 +21,12 @@ class TorqueSpeedometer @JvmOverloads constructor(
 ) : ImageSpeedometer(context, attrs, defStyleAttr) {
 
     var icon: Drawable? = null
+
+    /**
+     * The latest reading, unanimated and unclamped. The centre text shows this instead of the
+     * needle's position, which lags the reading and stops at the dial's min and max.
+     */
+    var displayValue: Float? = null
     var alarmPaint: Paint? = null
     val alarmBottomOffset = dpTOpx(3f)
     val alarmAnimator = OpenCloseAnimator.ofFloat(0f, 1f).apply {

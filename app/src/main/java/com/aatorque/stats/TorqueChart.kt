@@ -290,6 +290,7 @@ class TorqueChart : Fragment() {
      */
     private fun scale(data: TorqueData, value: Double): Double {
         val range = (data.display.maxValue - data.display.minValue).toDouble()
-        return if (range == 0.0) 0.0 else (value / range) * 100.0
+        // Offset by the minimum, or a gauge from -40 to 120 plots -40 at -25% instead of 0%.
+        return if (range == 0.0) 0.0 else ((value - data.display.minValue) / range) * 100.0
     }
 }

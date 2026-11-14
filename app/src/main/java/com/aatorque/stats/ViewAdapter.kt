@@ -66,15 +66,20 @@ fun setBackground(view: ImageSpeedometer, tickNumber: Int) {
                 }
             )
         )
-    view.setBackgroundResource(typedArray.getResourceId(0, 0))
+    try {
+        view.setBackgroundResource(typedArray.getResourceId(0, 0))
+    } finally {
+        typedArray.recycle()
+    }
 }
 
 @BindingAdapter("wholeNumbers")
 fun wholeNumbers(view: ImageSpeedometer, wholeNumbers: Boolean) {
+    val shown = { speed: Float -> (view as? TorqueSpeedometer)?.displayValue ?: speed }
     view.speedTextListener = if (wholeNumbers) {
-        { speed -> speed.roundToInt().toString() }
+        { speed -> shown(speed).roundToInt().toString() }
     } else {
-        { speed -> "%.1f".format(view.locale, speed) }
+        { speed -> "%.1f".format(view.locale, shown(speed)) }
     }
 }
 

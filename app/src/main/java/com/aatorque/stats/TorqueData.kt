@@ -16,11 +16,14 @@ class TorqueData(var display: Display) {
         const val PREFIX = "torque_"
         const val MIN_STALE_MS = 2_000L
         val drawableRegex = Regex("res/drawable/(?<name>.+)\\.[a-z]+")
-        val twoPlaces: NumberFormat = NumberFormat.getNumberInstance()
-        val intPlaces: NumberFormat = NumberFormat.getIntegerInstance()
-        val onePlace: NumberFormat = NumberFormat.getNumberInstance()
-        val twoPlace: NumberFormat = NumberFormat.getNumberInstance()
     }
+
+    // NumberFormat is not thread-safe. The values are formatted on the refresh thread while
+    // new gauges are built on the main thread, so every gauge owns its formatters.
+    private val twoPlaces: NumberFormat = NumberFormat.getNumberInstance()
+    private val intPlaces: NumberFormat = NumberFormat.getIntegerInstance()
+    private val onePlace: NumberFormat = NumberFormat.getNumberInstance()
+    private val twoPlace: NumberFormat = NumberFormat.getNumberInstance()
 
     init {
         twoPlaces.maximumFractionDigits = 2

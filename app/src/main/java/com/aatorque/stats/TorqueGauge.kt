@@ -86,10 +86,7 @@ class TorqueGauge : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         mMax.indicator = TriangleIndicator(requireContext())
-        mMax.indicator.color =
-            requireContext().theme.obtainStyledAttributes(
-                intArrayOf(R.attr.themedNeedleColor)
-            ).getColor(0, Color.RED)
+        mMax.indicator.color = themedColor(R.attr.themedNeedleColor, Color.RED)
         mMax.clearSections()
         mMax.addSections(
             Section(
@@ -103,17 +100,13 @@ class TorqueGauge : Fragment() {
             Section(
                 0f,
                 1f,
-                requireContext().theme.obtainStyledAttributes(intArrayOf(R.attr.themedNeedleColor))
-                    .getColor(
-                        0,
-                        Color.WHITE
-                    )
+                themedColor(R.attr.themedNeedleColor, Color.WHITE)
             )
         )
         savedInstanceState?.let { state ->
             setMinMax(
-                state.getFloat("minValue", MIN_MAX_DEFAULT.first).toInt(),
-                state.getFloat("maxValue", MIN_MAX_DEFAULT.second).toInt()
+                state.getFloat("torqueMin", MIN_MAX_DEFAULT.first).toInt(),
+                state.getFloat("torqueMax", MIN_MAX_DEFAULT.second).toInt()
             )
             turnMinMaxMarksEnabled(
                 MaxControl.forNumber(
@@ -165,9 +158,9 @@ class TorqueGauge : Fragment() {
 
     private fun applySpeedTextFormat(display: Display) {
         mClock.speedTextListener = when (resolvedDecimalPlaces(display)) {
-            0 -> { speed -> speed.roundToInt().toString() }
-            2 -> { speed -> formatTwoDecimalPlaces(speed) }
-            else -> { speed -> "%.1f".format(Locale.getDefault(), speed) }
+            0 -> { speed -> (mClock.displayValue ?: speed).roundToInt().toString() }
+            2 -> { speed -> formatTwoDecimalPlaces(mClock.displayValue ?: speed) }
+            else -> { speed -> "%.1f".format(Locale.getDefault(), mClock.displayValue ?: speed) }
         }
     }
 
@@ -180,9 +173,15 @@ class TorqueGauge : Fragment() {
         }
 
         // this is to enable an image as indicator.
-        val indicatorDrawable =
-            requireContext().theme.obtainStyledAttributes(intArrayOf(R.attr.themedNeedle))
-                .getDrawable(0)
+        val indicatorDrawable = requireContext().theme
+            .obtainStyledAttributes(intArrayOf(R.attr.themedNeedle))
+            .let { attrs ->
+                try {
+                    attrs.getDrawable(0)
+                } finally {
+                    attrs.recycle()
+                }
+            }
         val imageIndicator = SizedImageIndicator(requireContext(), indicatorDrawable!!)
         val color = mClock.indicator.color
         Timber.i("IndicatorColor: $color")
@@ -253,6 +252,7 @@ class TorqueGauge : Fragment() {
 
         binding.icon = drawable
         setMinMax(data.display.minValue, data.display.maxValue)
+        mClock.displayValue = null
         mClock.setSpeedAt(mClock.minSpeed)
         mMax.setSpeedAt(mMax.minSpeed)
         mRayClock.setSpeedAt(mRayClock.minSpeed)
@@ -292,12 +292,26 @@ class TorqueGauge : Fragment() {
         }
     }
 
+    /** Reads one colour from the current theme and recycles the TypedArray. */
+    private fun themedColor(attr: Int, default: Int): Int {
+        val attrs = requireContext().theme.obtainStyledAttributes(intArrayOf(attr))
+        return try {
+            attrs.getColor(0, default)
+        } finally {
+            attrs.recycle()
+        }
+    }
+
     private fun onUpdate(data: TorqueData) {
         val fVal = data.lastData.toFloat()
         // The needle lands well before the next sample, so it holds still instead of creeping
         // for the whole interval.
+        mClock.displayValue = fVal
         mClock.speedTo(fVal, TorqueRefresher.needleAnimMs)
         mRayClock.speedTo(fVal, TorqueRefresher.needleAnimMs)
+        // speedTo skips a value the needle already shows (or one past the dial end), so the
+        // centre text needs its own redraw.
+        mClock.invalidate()
         view?.alpha = if (data.isStale) STALE_ALPHA else 1f
         if (data.display.maxMarksActive == MaxControl.MAX && data.maxValue.isFinite()) {
             mMax.setSpeedAt(data.maxValue.toFloat())

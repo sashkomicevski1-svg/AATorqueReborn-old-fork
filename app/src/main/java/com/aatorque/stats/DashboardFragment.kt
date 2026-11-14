@@ -2,10 +2,7 @@ package com.aatorque.stats
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -32,7 +29,6 @@ import androidx.fragment.app.FragmentContainerView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.aatorque.datastore.UserPreference
 import com.aatorque.prefs.BackgroundSource
 import com.aatorque.prefs.BackgroundStore
@@ -350,27 +346,22 @@ open class DashboardFragment : AlbumArt() {
         displays[2]!!.isBottomDisplay = true
         displays[3]!!.isBottomDisplay = true
         torqueChart = childFragmentManager.findFragmentById(R.id.chartFrag)!! as TorqueChart
-        val filter = IntentFilter().apply { addAction("KEY_DOWN") }
-        LocalBroadcastManager.getInstance(requireContext())
-            .registerReceiver(
-                object : BroadcastReceiver() {
-                    override fun onReceive(p0: Context?, intent: Intent?) {
-                        // A rotary-only unit reaches these four directions and nothing else,
-                        // so every one of them has to do something. See issue #165.
-                        when (intent?.getIntExtra("KEY_CODE", 0)) {
-                            KeyEvent.KEYCODE_DPAD_LEFT -> setScreen(-1)
+        viewLifecycleOwner.lifecycleScope.launch {
+            CarKeyEvents.keys.collect { keyCode ->
+                // A rotary-only unit reaches these four directions and nothing else, so every
+                // one of them has to do something. See issue #165.
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT -> setScreen(-1)
 
-                            KeyEvent.KEYCODE_DPAD_RIGHT -> setScreen(1)
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> setScreen(1)
 
-                            KeyEvent.KEYCODE_DPAD_UP,
-                            KeyEvent.KEYCODE_DPAD_DOWN,
-                            KeyEvent.KEYCODE_DPAD_CENTER ->
-                                toggleShowChart(binding.showChart != true)
-                        }
-                    }
-                },
-                filter
-            )
+                    KeyEvent.KEYCODE_DPAD_UP,
+                    KeyEvent.KEYCODE_DPAD_DOWN,
+                    KeyEvent.KEYCODE_DPAD_CENTER ->
+                        toggleShowChart(binding.showChart != true)
+                }
+            }
+        }
         val gestureDetector =
             GestureDetector(
                 rootView.context,

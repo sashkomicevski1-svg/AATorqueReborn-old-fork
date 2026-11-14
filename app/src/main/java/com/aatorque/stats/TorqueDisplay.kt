@@ -45,7 +45,8 @@ class TorqueDisplay : Fragment() {
         binding = FragmentDisplayBinding.inflate(inflater, container, false)
         settingsViewModel.typefaceLiveData.observe(viewLifecycleOwner, this::setupTypeface)
         rootView = binding.root
-        bottomBacking.observeForever {
+        // Tied to the view: observeForever kept every destroyed view alive.
+        bottomBacking.observe(viewLifecycleOwner) {
             binding.showBottom = it
         }
         binding.showBottom = isBottomDisplay
