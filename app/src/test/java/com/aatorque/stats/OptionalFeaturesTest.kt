@@ -70,10 +70,60 @@ class OptionalFeaturesTest {
     @Test
     fun `no 0-100 without a standstill first`() {
         val (t, results) = timer()
-        t.feed(30.0, 0)
-        t.feed(50.0, 1_000)
-        t.feed(100.0, 4_000)
+        listOf(30.0, 50.0, 70.0, 90.0, 100.0).forEachIndexed { i, s -> t.feed(s, i * 1_000L) }
         assertEquals(listOf(AccelTimer.Kind.SIXTY_100), results.map { it.first })
+        assertEquals(2.5, results.single().second, 0.01)
+    }
+
+    @Test
+    fun `creeping and stopping restarts the 0-100 run`() {
+        val (t, results) = timer()
+        t.feed(0.0, 0)
+        t.feed(2.0, 1_000)
+        t.feed(0.0, 2_000)
+        // Wait at the light for 12 s (readings keep coming), then a 9 s pull.
+        var time = 2_000L
+        repeat(48) {
+            time += 250
+            t.feed(0.0, time)
+        }
+        var speed = 0.0
+        while (speed < 100) {
+            time += 250
+            speed += 100.0 / 36
+            t.feed(speed, time)
+        }
+        val zero = results.single { it.first == AccelTimer.Kind.ZERO_100 }.second
+        assertTrue("got $zero", zero < 10.0)
+    }
+
+    @Test
+    fun `holding a speed past 60 drops the 60-100 run`() {
+        val (t, results) = timer()
+        t.feed(58.0, 0)
+        t.feed(61.0, 500)
+        var time = 500L
+        repeat(40) {
+            time += 250
+            t.feed(61.0, time)
+        }
+        var speed = 61.0
+        while (speed < 100) {
+            time += 250
+            speed += 1.25
+            t.feed(speed, time)
+        }
+        assertTrue(results.none { it.first == AccelTimer.Kind.SIXTY_100 })
+    }
+
+    @Test
+    fun `a gap between readings drops the run`() {
+        val (t, results) = timer()
+        t.feed(0.0, 0)
+        t.feed(10.0, 500)
+        t.feed(50.0, 1_000)
+        t.feed(100.0, 5_000)
+        assertTrue(results.isEmpty())
     }
 
     // --- Night theme --------------------------------------------------------------------

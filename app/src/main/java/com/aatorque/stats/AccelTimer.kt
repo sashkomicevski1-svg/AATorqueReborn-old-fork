@@ -24,10 +24,15 @@ data class AccelResult(val kind: AccelTimer.Kind, val seconds: Double, val wall:
  * - 0-100 starts when the car leaves a standstill and ends at 100 km/h.
  * - 60-100 (overtaking) starts when the speed passes 60 km/h while rising.
  *
- * The moment a threshold is crossed is interpolated between two readings, using Torque's own
- * read times when it reports them. OBD speed is whole km/h, read a few times a second, so a
- * result is an estimate (a few tenths of a second). A run is dropped when the speed falls by
- * more than [DROP_KMH] from its highest, or when it takes too long.
+ * The moment a threshold is crossed is interpolated between two readings. OBD speed is whole
+ * km/h, read a few times a second, so a result is an estimate (a few tenths of a second).
+ *
+ * A run is dropped when:
+ * - the car is back at a standstill;
+ * - the speed falls by more than [DROP_KMH] from its highest;
+ * - the speed has not risen for [STALL_MS];
+ * - two readings are more than [MAX_GAP_MS] apart (the phone locked, the adapter busy);
+ * - it takes longer than the kind allows.
  */
 class AccelTimer(private val onResult: (Kind, Double) -> Unit) {
     enum class Kind(val from: Double, val to: Double, val maxMs: Long) {
@@ -38,9 +43,11 @@ class AccelTimer(private val onResult: (Kind, Double) -> Unit) {
     companion object {
         const val STANDSTILL_KMH = 0.5
         const val DROP_KMH = 3.0
+        const val STALL_MS = 3_000L
+        const val MAX_GAP_MS = 1_500L
     }
 
-    private class Run(val kind: Kind, val startMs: Double) {
+    private class Run(val kind: Kind, val startMs: Double, var peakAt: Long) {
         var peak = kind.from
     }
 
@@ -49,7 +56,14 @@ class AccelTimer(private val onResult: (Kind, Double) -> Unit) {
     private var standstill = false
     private val runs = ArrayList<Run>()
 
-    /** One speed reading at [timeMs] (any monotonic millisecond clock). */
+    /** Forget everything, for example when the clock of the readings changes. */
+    fun reset() {
+        prevSpeed = null
+        runs.clear()
+        standstill = false
+    }
+
+    /** One speed reading at [timeMs] (one monotonic millisecond clock for all readings). */
     fun feed(speed: Double, timeMs: Long) {
         val ps = prevSpeed
         val pt = prevTime
@@ -59,31 +73,46 @@ class AccelTimer(private val onResult: (Kind, Double) -> Unit) {
             standstill = speed <= STANDSTILL_KMH
             return
         }
+        // A gap between readings: nothing measured across it can be trusted.
+        if (timeMs - pt > MAX_GAP_MS) {
+            runs.clear()
+            standstill = speed <= STANDSTILL_KMH
+            return
+        }
+
+        val nowStill = speed <= STANDSTILL_KMH
+        // Back at a standstill: a 0-100 run that crept and stopped starts over.
+        if (nowStill) runs.removeAll { it.kind == Kind.ZERO_100 }
 
         // Start a 0-100 run when leaving a standstill.
-        if (standstill && speed > STANDSTILL_KMH && runs.none { it.kind == Kind.ZERO_100 }) {
-            runs += Run(Kind.ZERO_100, cross(ps, pt, speed, timeMs, STANDSTILL_KMH))
+        if (standstill && !nowStill) {
+            runs += Run(Kind.ZERO_100, cross(ps, pt, speed, timeMs, STANDSTILL_KMH), timeMs)
         }
-        standstill = speed <= STANDSTILL_KMH
+        standstill = nowStill
 
         // Start a 60-100 run when passing 60 on the way up.
         if (ps < Kind.SIXTY_100.from && speed >= Kind.SIXTY_100.from &&
             runs.none { it.kind == Kind.SIXTY_100 }
         ) {
-            runs += Run(Kind.SIXTY_100, cross(ps, pt, speed, timeMs, Kind.SIXTY_100.from))
+            runs += Run(Kind.SIXTY_100, cross(ps, pt, speed, timeMs, Kind.SIXTY_100.from), timeMs)
         }
 
         val done = ArrayList<Run>()
         for (run in runs) {
-            run.peak = maxOf(run.peak, speed)
+            if (speed > run.peak) {
+                run.peak = speed
+                run.peakAt = timeMs
+            }
             when {
                 speed >= run.kind.to -> {
-                    val end = cross(ps, pt, speed, timeMs, run.kind.to)
-                    onResult(run.kind, (end - run.startMs) / 1000.0)
+                    val seconds = (cross(ps, pt, speed, timeMs, run.kind.to) - run.startMs) / 1000.0
+                    if (seconds > 0) onResult(run.kind, seconds)
                     done += run
                 }
 
-                speed < run.peak - DROP_KMH || timeMs - run.startMs > run.kind.maxMs -> done += run
+                speed < run.peak - DROP_KMH ||
+                    timeMs - run.peakAt > STALL_MS ||
+                    timeMs - run.startMs > run.kind.maxMs -> done += run
             }
         }
         runs.removeAll(done.toSet())

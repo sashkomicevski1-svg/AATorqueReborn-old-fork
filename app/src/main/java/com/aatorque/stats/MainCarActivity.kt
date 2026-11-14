@@ -41,6 +41,13 @@ class MainCarActivity : CarActivity() {
     /** The car's night mode as Android Auto reports it in the configuration. */
     private var carNight = false
 
+    /**
+     * [carNight] once it has held for [NIGHT_SETTLE_MS]. A tunnel with automatic headlights
+     * must not rebuild the dashboard on the way in and again on the way out.
+     */
+    private var carNightStable = false
+    private var nightSettle: kotlinx.coroutines.Job? = null
+
     /** Night for the theme: the car's night mode, or the clock when chosen. */
     private val night = MutableStateFlow(false)
 
@@ -80,10 +87,11 @@ class MainCarActivity : CarActivity() {
         // Read the first value off the main thread. DataStore emits its default immediately,
         // so setupUi() runs in the next main-thread task.
         carNight = NightTheme.isNightConfig(resources.configuration)
+        carNightStable = carNight
         Timber.i("Night: car night mode at start $carNight")
         mainScope.launch {
             val data = dataStore.data.first()
-            night.value = NightTheme.isNight(data, carNight, hour())
+            night.value = NightTheme.isNight(data, carNightStable, hour())
             setLocalTheme(NightTheme.effective(data, night.value))
             setupUi()
         }
@@ -109,7 +117,7 @@ class MainCarActivity : CarActivity() {
 
     private suspend fun updateNight() {
         val prefs = dataStore.data.first()
-        val isNight = NightTheme.isNight(prefs, carNight, hour())
+        val isNight = NightTheme.isNight(prefs, carNightStable, hour())
         if (isNight != night.value) Timber.i("Night: now $isNight")
         night.value = isNight
     }
@@ -120,7 +128,12 @@ class MainCarActivity : CarActivity() {
         if (now != carNight) {
             Timber.i("Night: car night mode $now")
             carNight = now
-            mainScope.launch { updateNight() }
+            nightSettle?.cancel()
+            nightSettle = mainScope.launch {
+                delay(NIGHT_SETTLE_MS)
+                carNightStable = carNight
+                updateNight()
+            }
         }
     }
 
@@ -215,5 +228,6 @@ class MainCarActivity : CarActivity() {
 
     companion object {
         private const val FRAGMENT_CAR = "dashboard"
+        private const val NIGHT_SETTLE_MS = 30_000L
     }
 }

@@ -177,6 +177,7 @@
     <string name="profile_none">No profiles yet</string>
     <string name="profile_bad_name">Use letters or digits in the name</string>
     <string name="profile_saved_as">Saved as %1$s</string>
+    <string name="profile_overwrite">Replace the saved %1$s?</string>
     <string name="profile_load">Load</string>
     <string name="profile_delete">Delete</string>
     <string name="profile_load_title">Load %1$s?</string>

@@ -175,6 +175,7 @@ class TorqueRefresher {
     var alertsEnabled = true
 
     private var sessionIncluded = false
+    private var fastSet: Set<TorqueData> = emptySet()
     private var sessionFailures = 0
 
     /** Visible gauges, the alert watchers, and (when due) the session's PIDs. */
@@ -190,6 +191,7 @@ class TorqueRefresher {
         val wanted = session?.monitorPids().orEmpty().filter { it !in known && it !in fast }.toSet()
         sessionData.keys.retainAll(wanted + fast)
         val fastData = fast.map(::sessionTorqueData)
+        fastSet = fastData.toSet()
         if (!includeSession) return@synchronized visible + watched + fastData
         visible + watched + fastData + wanted.map(::sessionTorqueData)
     }
@@ -285,7 +287,9 @@ class TorqueRefresher {
     fun refreshDashboard(service: TorqueService) {
         val includeSession = sessionDue()
         val targets = pollTargets(includeSession)
-        sessionIncluded = includeSession && targets.any { it in sessionData.values }
+        // Only the slow session PIDs count: the fast ones (speed) are in every batch.
+        sessionIncluded =
+            includeSession && targets.any { it in sessionData.values && it !in fastSet }
         if (targets.isEmpty()) {
             return
         }

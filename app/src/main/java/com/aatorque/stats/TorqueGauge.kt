@@ -284,6 +284,8 @@ class TorqueGauge : Fragment() {
     }
 
     override fun onDestroyView() {
+        blinker?.set(false)
+        blinker = null
         needleGlide?.cancel()
         rayGlide?.cancel()
         needleGlide = null
@@ -381,7 +383,10 @@ class TorqueGauge : Fragment() {
     val alarmObserver = object : AwareObserver<Coloring>() {
         override fun onChanged(value: Coloring?) {
             mClock.setAlarm(value)
-            if (digital) binding.digital.setTextColor(value?.color ?: Color.WHITE)
+            // Opaque, so a rule colour with no alpha cannot make the number vanish.
+            if (digital) {
+                binding.digital.setTextColor((value?.color ?: Color.WHITE) or 0xFF000000.toInt())
+            }
             blinker?.set(false)
             blinker = Blinker(if (digital) binding.digital else mClock).also {
                 it.set(value?.blink == true)
@@ -397,6 +402,11 @@ class TorqueGauge : Fragment() {
         digital = data.display.digital
         val dialViews = listOf(mClock, mRayClock, mMax)
         if (digital) {
+            // The max mark and the min/max text belong to the dial. Their bindings would show
+            // them again on the next frame, so turn them off through the bindings.
+            binding.showLimitMarked = MaxControl.OFF
+            binding.showLimitBelow = MaxControl.OFF
+            lastDigitalText = null
             dialViews.forEach { it.visibility = View.INVISIBLE }
             binding.digital.visibility = View.VISIBLE
             binding.digital.setTextColor(Color.WHITE)
@@ -410,9 +420,15 @@ class TorqueGauge : Fragment() {
         }
     }
 
+    private var lastDigitalText: String? = null
+
     private fun showDigital(data: TorqueData) {
         val value = data.lastDataStr
         val unit = data.display.unit.trim()
+        // Most ticks bring the same value; a new text means a layout pass and a size search.
+        val key = "$value|$unit"
+        if (key == lastDigitalText) return
+        lastDigitalText = key
         val text = SpannableString(if (unit.isEmpty() || value == "-") value else "$value\n$unit")
         if (text.length > value.length) {
             text.setSpan(RelativeSizeSpan(0.35f), value.length, text.length, 0)

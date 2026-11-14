@@ -83,27 +83,39 @@ class ProfilesFragment : PreferenceFragmentCompat() {
             .setView(input)
             .setPositiveButton(R.string.profile_save_button) { _, _ ->
                 val name = input.text.toString()
-                lifecycleScope.launch {
-                    val prefs = requireContext().dataStore.data.first()
-                    val saved = withContext(Dispatchers.IO) { store.save(name, prefs) }
-                    if (saved == null) {
-                        Toast.makeText(
-                            requireContext(),
-                            R.string.profile_bad_name,
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            requireContext(),
-                            getString(R.string.profile_saved_as, saved),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        refresh()
-                    }
+                if (store.exists(name)) {
+                    AlertDialog.Builder(requireContext())
+                        .setTitle(getString(R.string.profile_overwrite, ProfileStore.clean(name)))
+                        .setPositiveButton(R.string.profile_save_button) { _, _ -> save(name) }
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show()
+                } else {
+                    save(name)
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    private fun save(name: String) {
+        lifecycleScope.launch {
+            val prefs = requireContext().dataStore.data.first()
+            val saved = withContext(Dispatchers.IO) { store.save(name, prefs) }
+            if (saved == null) {
+                Toast.makeText(
+                    requireContext(),
+                    R.string.profile_bad_name,
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.profile_saved_as, saved),
+                    Toast.LENGTH_SHORT
+                ).show()
+                refresh()
+            }
+        }
     }
 
     private fun choose(name: String) {

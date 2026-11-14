@@ -1,5 +1,19 @@
 # Changelog
 
+## AATorqueReborn 2.9.0
+
+- **Digital gauges.** In a gauge's settings, "Digital" shows the value as a large number with
+  the unit under it, in place of the dial. It turns the alarm colour.
+- **Blinking alarms.** An alarm rule can blink its value while it lasts ("Blink while it lasts").
+- **Night theme.** Settings → Night theme picks a theme for night. It switches with the car's
+  night mode (as Android Auto passes it on), or by the clock from 19:00 to 07:00.
+- **Acceleration timer.** It times 0–100 and 60–100 km/h by itself. The result shows on the car
+  screen for 15 s, and best and last runs are kept in Drive log. It is an estimate from OBD
+  speed, accurate to a few tenths of a second. Car assistant → Acceleration timer.
+- **Car profiles.** Settings → Car profiles saves the whole setup under a name (dashboards,
+  theme, font, background, alarms) and loads or deletes it later.
+- Older backups stay compatible: the new fields read as off.
+
 ## AATorqueReborn 2.8.0 — car assistant
 
 Settings → **Car assistant** groups the new features. They run only on the car screen, from

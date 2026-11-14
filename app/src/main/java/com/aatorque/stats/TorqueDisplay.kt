@@ -107,6 +107,13 @@ class TorqueDisplay : Fragment() {
 
     private var blinker: Blinker? = null
 
+    override fun onDestroyView() {
+        // The animator would keep the old view and run every frame after it is gone.
+        blinker?.set(false)
+        blinker = null
+        super.onDestroyView()
+    }
+
     val alarmObserver = object : AwareObserver<Coloring>() {
         override fun onChanged(value: Coloring?) {
             binding.alarm = value?.color

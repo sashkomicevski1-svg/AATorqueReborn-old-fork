@@ -54,6 +54,9 @@ object CarSession {
     private var accel: AccelTimer? = null
     private var lastSpeedSample = Long.MIN_VALUE
 
+    /** Which clock the timer's readings use; a change resets the timer. */
+    private var speedOnTorqueClock: Boolean? = null
+
     private val androidOutputs = object : DpfOutputs {
         override fun notice(key: String, notice: CarNotices.Notice?) {
             if (notice == null) CarNotices.remove(key) else CarNotices.post(key, notice)
@@ -133,6 +136,7 @@ object CarSession {
             null
         }
         lastSpeedSample = Long.MIN_VALUE
+        speedOnTorqueClock = null
         CarScreenEvents.reset()
         running = true
         token++
@@ -203,11 +207,13 @@ object CarSession {
             val speed = byPid[speedPid()]
             if (speed != null && speed.hasData()) {
                 // Torque's own read time places the reading best; our clock otherwise.
-                val sample = if (speed.timesKnown && speed.torqueUpdateTime > 0) {
-                    speed.torqueUpdateTime
-                } else {
-                    nowElapsed
+                val torqueClock = speed.timesKnown && speed.torqueUpdateTime > 0
+                if (torqueClock != speedOnTorqueClock) {
+                    // Torque's read times and our clock have different bases: never mix them.
+                    speedOnTorqueClock = torqueClock
+                    timer.reset()
                 }
+                val sample = if (torqueClock) speed.torqueUpdateTime else nowElapsed
                 if (sample != lastSpeedSample) {
                     lastSpeedSample = sample
                     timer.feed(speed.lastData, sample)
@@ -255,7 +261,8 @@ object CarSession {
     /** Session PIDs made Torque fail the batch (a stale manual choice?); stop asking for them. */
     fun onSessionPidsRejected() {
         Timber.w("Session: Torque rejected the session PIDs $roles; dropping the custom ones")
-        roles = roles.filterKeys { it == PidRole.SPEED || it == PidRole.COOLANT }
+        // Back to the standard SAE ids: a manual choice may be what Torque refuses.
+        roles = mapOf(PidRole.SPEED to "0d,0", PidRole.COOLANT to "05,0")
         roleAttempts = ROLE_ATTEMPTS
     }
 
@@ -338,7 +345,8 @@ object DpfSettings {
 
     fun tripEnabled(context: Context) = prefs(context).getBoolean(TRIP_ENABLED, true)
 
-    fun accelEnabled(context: Context) = prefs(context).getBoolean(ACCEL_ENABLED, true)
+    /** Off by default: it reads speed on every tick, one more PID for Torque's adapter. */
+    fun accelEnabled(context: Context) = prefs(context).getBoolean(ACCEL_ENABLED, false)
 
     fun voice(context: Context) = prefs(context).getBoolean(VOICE, true)
 
