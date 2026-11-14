@@ -520,6 +520,26 @@
     </style>
 
 
+    <!-- Original artwork, rendered by tools/make_mazda_theme.py. No logo, wordmark or font. -->
+    <style name="AppTheme.Mazda" parent="AppTheme">
+        <item name="themedCarBackground">@drawable/background_incar_black</item>
+        <item name="themedDialBackground">@drawable/dial_background_marks_mazda</item>
+        <item name="themedEmptyDialBackground">@drawable/dial_background_empty_mazda</item>
+        <item name="themedBlankDialBackground">@drawable/dial_background_blank_mazda</item>
+        <item name="themedNeedle">@drawable/needle_mazda</item>
+        <item name="themedStopWatchBackground">@drawable/dial_background_blank_mazda</item>
+        <item name="themedNeedleColor">@color/mazda_crimson</item>
+        <!-- aqua switches the gauge to the PNG needle (TorqueGauge.turnRaysEnabled). -->
+        <item name="sv_indicatorColor">@color/aqua</item>
+        <item name="sv_withIndicatorLight">true</item>
+        <item name="sv_indicatorLightColor">#1fe3242b</item>
+        <item name="sv_indicatorWidth">4dp</item>
+        <item name="sv_tickPadding">22dp</item>
+        <item name="sv_speedometerWidth">40dp</item>
+        <item name="sv_tickRotation">false</item>
+    </style>
+
+
     <style name="AppTheme.ProgressBar.Horizontal" parent="Widget.AppCompat.ProgressBar.Horizontal">
         <item name="android:progressDrawable">@drawable/progress_vertical_material_car</item>
         <item name="android:minWidth">@dimen/progress_bar_height_material_car</item>

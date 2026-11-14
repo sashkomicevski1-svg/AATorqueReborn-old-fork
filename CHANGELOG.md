@@ -42,3 +42,8 @@ with the AATorqueReborn key, so it replaces any other AA Torque build only after
 - Removed the protected `INSTALL_PACKAGES` and `DELETE_PACKAGES` permissions.
 - protoc 3.25.1, matching the protobuf runtime. The submodule uses HTTPS.
 
+### Theme
+- New "Mazda Style" theme, made for 800×480 head units. All artwork is original and drawn by
+  `tools/make_mazda_theme.py`: no logo, wordmark or brand font. Deep black face, satin bezel,
+  thin ticks with a crimson red zone, and a slim crimson needle that keeps clear of the centre
+  value.
