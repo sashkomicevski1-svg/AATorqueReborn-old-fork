@@ -100,6 +100,13 @@ class TorqueService(private val handler: Handler = Handler(Looper.getMainLooper(
         return this
     }
 
+    @VisibleForTesting
+    fun pendingCallbackCount(): Int = conLock.withLock { onConnect.size }
+
+    fun removeConnectCallback(func: (ITorqueService) -> Unit) {
+        conLock.withLock { onConnect.remove(func) }
+    }
+
     fun runIfConnected(func: (ITorqueService) -> Unit) {
         torqueService?.let(func)
     }
@@ -163,8 +170,9 @@ class TorqueService(private val handler: Handler = Handler(Looper.getMainLooper(
             torqueService = null
             // Android normally follows with onServiceDisconnected and reconnects. If the
             // binding itself is gone, nothing follows, so rebind after the backoff anyway;
-            // a rebind on a healthy binding is skipped in rebindNow().
-            scheduleRebind()
+            // a rebind on a healthy binding is skipped in rebindNow(). This runs on the
+            // refresh thread, and the rebind state belongs to the main thread.
+            handler.post { scheduleRebind() }
         }
     }
 

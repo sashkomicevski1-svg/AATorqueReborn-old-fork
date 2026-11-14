@@ -21,7 +21,12 @@ with the AATorqueReborn key, so it replaces any other AA Torque build only after
 - Alarms work on 0 (for example DPF regeneration `EQ 0`) as soon as Torque confirms a read.
 - A value Torque stopped refreshing is drawn at 40% opacity. The threshold is three of the
   PID's observed update periods, and at least 2 s.
+- The needle glides: each reading is animated linearly over about one of the PID's own update
+  periods (measured from Torque, 100-800 ms), so it keeps moving between readings instead of
+  jumping and stopping under hard acceleration. It trails the reading by about one period.
 - The gauge centre shows the latest reading: not animated, and not clamped to the dial range.
+  It shows "-" until Torque has read the PID.
+- After a Torque restart, a PID it has not read again is shown greyed out, not as a fake 0.
 - The chart plots values relative to the gauge minimum.
 
 ### Diagnostics

@@ -18,6 +18,11 @@ class CacheLogTree : Timber.DebugTree() {
 
     val logCache = ArrayDeque<LogDesc>(KEEP_LOGS)
 
+    // Timber's DebugTree builds a tag from a stack trace before log() runs. Lines that would
+    // be dropped anyway (debug lines in a release build) must not pay for that.
+    override fun isLoggable(tag: String?, priority: Int): Boolean =
+        BuildConfig.DEBUG || priority >= Log.INFO
+
     override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
         if (BuildConfig.DEBUG) {
             super.log(priority, "AATORQUE:${tag ?: ""}", message, t)

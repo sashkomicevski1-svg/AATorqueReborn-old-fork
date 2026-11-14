@@ -49,6 +49,10 @@ class TorqueGauge : Fragment() {
 
     private var rayOn = false
     private lateinit var binding: FragmentGaugeBinding
+    private var needleGlide: NeedleGlide? = null
+    private var rayGlide: NeedleGlide? = null
+    private var lastShown = Float.NaN
+    private var lastStale = false
 
     override fun onAttach(context: Context) {
         super.onAttach(context)
@@ -74,6 +78,8 @@ class TorqueGauge : Fragment() {
     ): View? {
         Timber.i("onCreateView")
         binding = FragmentGaugeBinding.inflate(inflater, container, false)
+        needleGlide = NeedleGlide(binding.dial)
+        rayGlide = NeedleGlide(binding.ray)
         settingsViewModel.typefaceLiveData.observe(viewLifecycleOwner, this::setupTypeface)
         settingsViewModel.minMaxBelow.observe(viewLifecycleOwner) {
             binding.minMaxBelow = it
@@ -158,9 +164,13 @@ class TorqueGauge : Fragment() {
 
     private fun applySpeedTextFormat(display: Display) {
         mClock.speedTextListener = when (resolvedDecimalPlaces(display)) {
-            0 -> { speed -> (mClock.displayValue ?: speed).roundToInt().toString() }
-            2 -> { speed -> formatTwoDecimalPlaces(mClock.displayValue ?: speed) }
-            else -> { speed -> "%.1f".format(Locale.getDefault(), mClock.displayValue ?: speed) }
+            0 -> { speed -> mClock.centreText(speed) { it.roundToInt().toString() } }
+
+            2 -> { speed -> mClock.centreText(speed) { formatTwoDecimalPlaces(it) } }
+
+            else -> { speed ->
+                mClock.centreText(speed) { "%.1f".format(Locale.getDefault(), it) }
+            }
         }
     }
 
@@ -253,9 +263,11 @@ class TorqueGauge : Fragment() {
         binding.icon = drawable
         setMinMax(data.display.minValue, data.display.maxValue)
         mClock.displayValue = null
-        mClock.setSpeedAt(mClock.minSpeed)
+        mClock.showDash = data.lastDataStr == "-"
+        lastShown = Float.NaN
+        needleGlide?.reset(mClock.minSpeed) ?: mClock.setSpeedAt(mClock.minSpeed)
         mMax.setSpeedAt(mMax.minSpeed)
-        mRayClock.setSpeedAt(mRayClock.minSpeed)
+        rayGlide?.reset(mRayClock.minSpeed) ?: mRayClock.setSpeedAt(mRayClock.minSpeed)
         binding.limitValue = "-"
         turnTickEnabled(data.display.ticksActive)
         turnMinMaxMarksEnabled(data.display.maxMarksActive)
@@ -265,6 +277,14 @@ class TorqueGauge : Fragment() {
         applySpeedTextFormat(data.display)
 
         alarmObserver.bind(viewLifecycleOwner, data.currentAlarm)
+    }
+
+    override fun onDestroyView() {
+        needleGlide?.cancel()
+        rayGlide?.cancel()
+        needleGlide = null
+        rayGlide = null
+        super.onDestroyView()
     }
 
     private fun setMinMax(minspeed: Int, maxspeed: Int) {
@@ -304,15 +324,31 @@ class TorqueGauge : Fragment() {
 
     private fun onUpdate(data: TorqueData) {
         val fVal = data.lastData.toFloat()
-        // The needle lands well before the next sample, so it holds still instead of creeping
-        // for the whole interval.
+        if (data.isStale != lastStale) {
+            lastStale = data.isStale
+            view?.alpha = if (data.isStale) STALE_ALPHA else 1f
+        }
+        // Torque has not read this PID yet: keep the dash instead of drawing a 0.
+        if (data.lastDataStr == "-") return
+        if (mClock.showDash) {
+            mClock.showDash = false
+            mClock.invalidate()
+        }
+        // The refresh tick runs faster than Torque reads most PIDs, so most ticks bring the
+        // same value. Nothing to redraw then.
+        if (fVal == lastShown) return
+        lastShown = fVal
+        // The needle glides linearly over about one update period of this PID, so it keeps
+        // moving between readings instead of jumping and stopping.
+        val glideMs = NeedleGlide.durationFor(
+            data.observedPeriodMs,
+            TorqueRefresher.activeIntervalMs
+        )
         mClock.displayValue = fVal
-        mClock.speedTo(fVal, TorqueRefresher.needleAnimMs)
-        mRayClock.speedTo(fVal, TorqueRefresher.needleAnimMs)
-        // speedTo skips a value the needle already shows (or one past the dial end), so the
-        // centre text needs its own redraw.
+        needleGlide?.glideTo(fVal, glideMs)
+        rayGlide?.glideTo(fVal, glideMs)
+        // The glide skips a value past the dial end, so the centre text needs its own redraw.
         mClock.invalidate()
-        view?.alpha = if (data.isStale) STALE_ALPHA else 1f
         if (data.display.maxMarksActive == MaxControl.MAX && data.maxValue.isFinite()) {
             mMax.setSpeedAt(data.maxValue.toFloat())
             Timber.d("Setting max speed ${data.maxValue}")

@@ -503,7 +503,7 @@ open class DashboardFragment : AlbumArt() {
         context?.let {
             DevOptions.prefs(it).unregisterOnSharedPreferenceChangeListener(devPrefListener)
         }
-        torqueRefresher.shutdown()
+        torqueRefresher.shutdown(torqueService)
         // Releases this fragment's share of the binding only. Torque keeps running; quitting
         // it is an opt-in that only the car activity acts on when Android Auto ends.
         TorqueConnections.release()

@@ -101,7 +101,16 @@ class TorqueData(var display: Display) {
      * only, so Torque's clock base never has to match ours.
      */
     fun trackUpdateTime(torqueTime: Long, nowElapsed: Long) {
-        if (torqueTime <= 0L) return
+        if (torqueTime <= 0L) {
+            // Torque has no read for this PID (yet, or again after it restarted). Forget the
+            // old session: a 0 now is not data, and the value still on screen is old, so it
+            // is shown as stale if there ever was one.
+            hasValidRead = false
+            torqueUpdateTime = 0L
+            observedPeriodMs = 0L
+            isStale = lastFreshElapsed != 0L
+            return
+        }
         hasValidRead = true
         if (torqueTime != torqueUpdateTime) {
             if (torqueUpdateTime > 0L) {

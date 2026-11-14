@@ -42,6 +42,21 @@ if (signingPropsFile.exists()) {
     signingPropsFile.withInputStream { signingProps.load(it) }
 }
 def hasReleaseKey = signingPropsFile.exists()
+def releaseStoreFile = null
+if (hasReleaseKey) {
+    def storePath = signingProps['storeFile']
+    if (!storePath) {
+        throw new GradleException("${signingPropsFile} has no storeFile entry")
+    }
+    releaseStoreFile = new File(storePath)
+    // A relative path is relative to the properties file, not to app/.
+    if (!releaseStoreFile.absolute) {
+        releaseStoreFile = new File(signingPropsFile.parentFile, storePath)
+    }
+} else {
+    logger.warn("AATorqueReborn: no release key at ${signingPropsFile}; release builds are " +
+            "signed with the DEBUG key and cannot update an installed AATorqueReborn.")
+}
 def ghPackage = "aa-torque"
 
 
@@ -79,7 +94,7 @@ android {
     signingConfigs {
         if (hasReleaseKey) {
             release {
-                storeFile file(signingProps['storeFile'])
+                storeFile releaseStoreFile
                 storePassword signingProps['storePassword']
                 keyAlias signingProps['keyAlias']
                 keyPassword signingProps['keyPassword']

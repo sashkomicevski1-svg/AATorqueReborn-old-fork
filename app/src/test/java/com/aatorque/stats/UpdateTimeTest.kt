@@ -112,11 +112,28 @@ class UpdateTimeTest {
     }
 
     @Test
-    fun `the needle is always shorter than the tick`() {
-        listOf(100L, 150L, 250L, 300L, 500L).forEach { interval ->
-            val needle = TorqueRefresher.needleFor(interval)
-            assertTrue("$interval -> $needle", needle <= 200L)
-            assertTrue("$interval -> $needle", needle < interval || interval <= 100L)
-        }
+    fun `a Torque restart forgets the old reads`() {
+        val regen = gauge("22045b")
+        apply(regen, 1.0, 5_000L, 1_000L)
+        assertTrue(regen.hasValidRead)
+
+        // Torque came back and has not read the PID yet: a 0 is not data, and the old value
+        // left on screen is shown as stale.
+        apply(regen, 0.0, 0L, 2_000L)
+        assertFalse(regen.hasValidRead)
+        assertTrue(regen.isStale)
+        assertEquals("1.0", regen.lastDataStr)
+    }
+
+    @Test
+    fun `the needle glides over about one update period of the PID`() {
+        // Boost read by Torque every 250 ms: glide 300 ms, so the needle is still moving when
+        // the next reading arrives instead of stopping.
+        assertEquals(300L, NeedleGlide.durationFor(250L, 150L))
+        // Period not known yet: follow the refresh tick.
+        assertEquals(150L, NeedleGlide.durationFor(0L, 150L))
+        // Bounded both ways: never a jump, never a needle that lags by seconds.
+        assertEquals(NeedleGlide.MIN_GLIDE_MS, NeedleGlide.durationFor(20L, 50L))
+        assertEquals(NeedleGlide.MAX_GLIDE_MS, NeedleGlide.durationFor(5_000L, 150L))
     }
 }

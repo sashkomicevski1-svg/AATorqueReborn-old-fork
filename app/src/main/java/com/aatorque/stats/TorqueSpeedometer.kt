@@ -27,6 +27,13 @@ class TorqueSpeedometer @JvmOverloads constructor(
      * needle's position, which lags the reading and stops at the dial's min and max.
      */
     var displayValue: Float? = null
+
+    /** True until Torque has read this PID: the centre shows "-" instead of a fake 0. */
+    var showDash = false
+
+    /** The centre text for [speed], honouring [showDash] and [displayValue]. */
+    fun centreText(speed: Float, format: (Float) -> String): String =
+        if (showDash) "-" else format(displayValue ?: speed)
     var alarmPaint: Paint? = null
     val alarmBottomOffset = dpTOpx(3f)
     val alarmAnimator = OpenCloseAnimator.ofFloat(0f, 1f).apply {

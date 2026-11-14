@@ -152,11 +152,14 @@ class MainCarActivity : CarActivity() {
         mainScope.cancel()
         // The car screen is gone, so this is the end of the Android Auto session. Quitting
         // Torque is opt-in (Developer options), off by default.
-        if (DevOptions.quitTorqueOnExit(this)) {
-            torqueService?.requestQuit(this)
-        }
+        // Release first: a binding with BIND_AUTO_CREATE that is still held would let Android
+        // start Torque again right after it quits.
+        val quit = torqueService
         torqueService = null
         TorqueConnections.release()
+        if (DevOptions.quitTorqueOnExit(this)) {
+            quit?.requestQuit(this)
+        }
         try {
             applicationContext.unregisterReceiver(screenReceiver)
         } catch (e: IllegalArgumentException) {

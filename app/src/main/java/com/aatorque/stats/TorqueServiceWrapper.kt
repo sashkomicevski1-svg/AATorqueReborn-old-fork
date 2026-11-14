@@ -68,7 +68,8 @@ class TorqueServiceWrapper : Service() {
         // Fresh data from a live Torque connection still wins when it arrives later.
         if (connection.torqueService == null) {
             onComplete?.invoke(pids ?: emptyList())
-            if (!torqueBindSucceeded) return
+            // A failed first bind is retried by the connection, so ask about the latest one.
+            if (!connection.lastBindOk) return
         }
         connection.addConnectCallback {
             val bg = ListPids(it) { newPids ->

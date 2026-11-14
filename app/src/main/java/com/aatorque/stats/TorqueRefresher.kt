@@ -46,6 +46,7 @@ class TorqueRefresher {
     val data = HashMap<Int, TorqueData>()
 
     /** True while the developer option simulates values instead of reading Torque. */
+    @Volatile
     var simulate = false
 
     private var executor: ScheduledThreadPoolExecutor? = null
@@ -69,27 +70,28 @@ class TorqueRefresher {
     var diagnostics = false
     private var lastDiagElapsed = 0L
 
+    /** The bind failure reported at start, until a read succeeds. */
+    @Volatile
+    private var torqueProblem: ConnectStatus? = null
+
+    @Volatile
+    private var pendingConnectCallback: ((org.prowl.torque.remote.ITorqueService) -> Unit)? = null
+
     companion object {
         const val DEFAULT_REFRESH_INTERVAL = 150L
         const val DIAG_EVERY_MS = 5_000L
 
-        /**
-         * How long a needle takes to reach a new value. Deliberately shorter than the refresh
-         * interval: the needle lands, holds, then moves again. An animation that lasts the
-         * whole interval never finishes, so the needle creeps until the next sample.
-         */
+        /** The refresh interval in use, for views that pace their animation by it. */
         @Volatile
-        var needleAnimMs = needleFor(DEFAULT_REFRESH_INTERVAL)
+        var activeIntervalMs = DEFAULT_REFRESH_INTERVAL
             private set
-
-        fun needleFor(intervalMs: Long): Long = (intervalMs * 4 / 5).coerceIn(80L, 200L)
     }
 
     /** Change the polling rate; a running timer restarts at the new rate. */
     fun updateInterval(intervalMs: Long, service: TorqueService) {
         if (intervalMs == refreshIntervalMs) return
         refreshIntervalMs = intervalMs
-        needleAnimMs = needleFor(intervalMs)
+        activeIntervalMs = intervalMs
         if (refreshTimer != null) {
             stopRefreshTimer()
             startTimer(service)
@@ -133,12 +135,34 @@ class TorqueRefresher {
             Timber.i("Refreshing ${targets.size} items every ${refreshIntervalMs}ms")
             startTimer(service)
         }
-        val status = if (targets.isNotEmpty()) conWatcher.value else ConnectStatus.SETUP_GAUGE
+        // "Set up gauges" only while there is nothing to show. It is also what an empty first
+        // pass (before the dashboard loads) reports, so once gauges exist, go back to the bind
+        // problem it covered, or to "connecting", instead of keeping it.
+        val status = when {
+            targets.isEmpty() -> ConnectStatus.SETUP_GAUGE
+
+            conWatcher.value == ConnectStatus.SETUP_GAUGE ->
+                torqueProblem
+                    ?: if (service.torqueService != null) {
+                        ConnectStatus.CONNECTING_ECU
+                    } else {
+                        ConnectStatus.CONNECTING_TORQUE
+                    }
+
+            else -> conWatcher.value
+        }
         conWatcher.emit(status)
-        service.addConnectCallback {
-            if (conWatcher.value == ConnectStatus.CONNECTING_TORQUE) {
-                conWatcher.tryEmit(ConnectStatus.CONNECTING_ECU)
+        // makeExecutors runs on every settings change. One pending callback is enough; more
+        // would pile up on the shared connection until Torque answers.
+        if (pendingConnectCallback == null) {
+            val callback: (org.prowl.torque.remote.ITorqueService) -> Unit = {
+                pendingConnectCallback = null
+                if (conWatcher.value == ConnectStatus.CONNECTING_TORQUE) {
+                    conWatcher.tryEmit(ConnectStatus.CONNECTING_ECU)
+                }
             }
+            pendingConnectCallback = callback
+            service.addConnectCallback(callback)
         }
     }
 
@@ -147,11 +171,13 @@ class TorqueRefresher {
      * instead of leaving the car on an unbounded "Connecting to Torque…" message.
      */
     fun reportTorqueMissing() {
+        torqueProblem = ConnectStatus.NO_TORQUE
         conWatcher.tryEmit(ConnectStatus.NO_TORQUE)
     }
 
     /** The bind failed, but the package may be present; do not claim it is missing. */
     fun reportTorqueUnavailable() {
+        torqueProblem = ConnectStatus.TORQUE_UNAVAILABLE
         conWatcher.tryEmit(ConnectStatus.TORQUE_UNAVAILABLE)
     }
 
@@ -236,7 +262,7 @@ class TorqueRefresher {
             handler.post {
                 targets.forEach { it.sendNotifyUpdate() }
             }
-            conWatcher.tryEmit(ConnectStatus.CONNECTED)
+            markConnected()
         }
     }
 
@@ -339,8 +365,13 @@ class TorqueRefresher {
             handler.post {
                 torqueData.sendNotifyUpdate()
             }
-            conWatcher.tryEmit(ConnectStatus.CONNECTED)
+            markConnected()
         }
+    }
+
+    private fun markConnected() {
+        torqueProblem = null
+        conWatcher.tryEmit(ConnectStatus.CONNECTED)
     }
 
     /**
@@ -366,10 +397,19 @@ class TorqueRefresher {
     }
 
     /** Stop polling for good and release the worker thread. */
-    fun shutdown() {
+    fun shutdown(service: TorqueService? = null) {
         stopExecutors()
         executor?.shutdownNow()
         executor = null
+        // Drop every reference to this dashboard's views and to this refresher, so a
+        // destroyed dashboard is not kept alive by the shared connection.
+        synchronized(data) {
+            (data.values + cache.values.flatMap { it.values }).forEach { it.stopRefreshing(true) }
+            data.clear()
+            cache.clear()
+        }
+        pendingConnectCallback?.let { service?.removeConnectCallback(it) }
+        pendingConnectCallback = null
     }
 
     private fun stopRefreshTimer() {
@@ -384,7 +424,7 @@ class TorqueRefresher {
         handler.post {
             torqueData.sendNotifyUpdate()
         }
-        conWatcher.tryEmit(ConnectStatus.CONNECTED)
+        markConnected()
     }
 
     fun hasChanged(idx: Int, otherScreen: Display?): Boolean {

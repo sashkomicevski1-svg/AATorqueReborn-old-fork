@@ -75,12 +75,13 @@ fun setBackground(view: ImageSpeedometer, tickNumber: Int) {
 
 @BindingAdapter("wholeNumbers")
 fun wholeNumbers(view: ImageSpeedometer, wholeNumbers: Boolean) {
-    val shown = { speed: Float -> (view as? TorqueSpeedometer)?.displayValue ?: speed }
-    view.speedTextListener = if (wholeNumbers) {
-        { speed -> shown(speed).roundToInt().toString() }
+    val torque = view as? TorqueSpeedometer
+    val format: (Float) -> String = if (wholeNumbers) {
+        { it.roundToInt().toString() }
     } else {
-        { speed -> "%.1f".format(view.locale, shown(speed)) }
+        { "%.1f".format(view.locale, it) }
     }
+    view.speedTextListener = { speed -> torque?.centreText(speed, format) ?: format(speed) }
 }
 
 @BindingAdapter("minMax")
