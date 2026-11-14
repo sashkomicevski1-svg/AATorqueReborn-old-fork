@@ -63,6 +63,9 @@ class TorqueData(var display: Display) {
     /** Smoothed time between Torque's reads of this PID, from its own timestamps. */
     var observedPeriodMs = 0L
 
+    /** Dashboard screen this display belongs to, for "switch to this screen"; -1 = unknown. */
+    var screenIndex = -1
+
     /** A value was published at least once. */
     var hasAnyRead = false
 
@@ -177,15 +180,25 @@ class TorqueData(var display: Display) {
     private fun updateAlarmSound(newRule: Coloring?) {
         val previous = activeRule
         if (newRule != previous) {
-            if (alarmEvaluated && previous?.beepOnEnd == true) {
-                AlarmSound.trigger(soundKey(previous), AlarmSound.Kind.END)
+            if (alarmEvaluated && previous != null) {
+                announce(previous, AlarmSound.Kind.END, previous.speakOnEnd, previous.beepOnEnd)
+                if (previous.showScreen && screenIndex >= 0) CarScreenEvents.release(screenIndex)
             }
-            if (newRule?.beepOnStart == true) {
-                AlarmSound.trigger(soundKey(newRule), AlarmSound.Kind.START)
+            if (newRule != null) {
+                announce(newRule, AlarmSound.Kind.START, newRule.speakOnStart, newRule.beepOnStart)
+                if (newRule.showScreen && screenIndex >= 0) CarScreenEvents.show(screenIndex)
             }
             activeRule = newRule
         }
         alarmEvaluated = true
+    }
+
+    /** Speak the rule's text if it has one, otherwise beep if asked; at most once per 10 s. */
+    private fun announce(rule: Coloring, kind: AlarmSound.Kind, text: String, beep: Boolean) {
+        if (text.isBlank() && !beep) return
+        val key = soundKey(rule)
+        if (!AlarmSound.allow(key, kind)) return
+        if (text.isNotBlank()) VoiceAlerts.speak(text) else AlarmSound.playNow(key, kind)
     }
 
     private fun soundKey(rule: Coloring) = "${display.pid}|${rule.operation}${rule.value}"

@@ -118,6 +118,7 @@ class TorqueRefresher {
         } else {
             TorqueData(query)
         }
+        torqueData.screenIndex = screen
         cache.getOrPut(screen) {
             HashMap()
         }[pos] = torqueData
@@ -133,11 +134,16 @@ class TorqueRefresher {
      */
     private val watchers = HashMap<Display, TorqueData>()
 
-    fun setSoundWatchers(displays: List<Display>) = synchronized(data) {
-        val keep = displays.toSet()
-        watchers.keys.retainAll(keep)
-        keep.forEach { display ->
-            watchers.getOrPut(display) { TorqueData(display).apply { isWatcher = true } }
+    fun setSoundWatchers(displays: List<Pair<Display, Int>>) = synchronized(data) {
+        val keep = displays.distinctBy { it.first }
+        watchers.keys.retainAll(keep.map { it.first }.toSet())
+        keep.forEach { (display, screen) ->
+            watchers.getOrPut(display) {
+                TorqueData(display).apply {
+                    isWatcher = true
+                    screenIndex = screen
+                }
+            }
         }
     }
 

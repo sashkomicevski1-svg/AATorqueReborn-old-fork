@@ -38,6 +38,11 @@ message Coloring{
   // older backups read them as false.
   bool beepOnStart = 4;
   bool beepOnEnd = 5;
+  // Spoken instead of the beep when not empty.
+  string speakOnStart = 6;
+  string speakOnEnd = 7;
+  // Switch the car screen to this gauge's dashboard while the rule matches.
+  bool showScreen = 8;
 }
 
 message Display {

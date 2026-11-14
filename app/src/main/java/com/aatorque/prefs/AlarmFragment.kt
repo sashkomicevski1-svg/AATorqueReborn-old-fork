@@ -17,7 +17,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.rounded.Add
@@ -89,6 +91,9 @@ data class FormData(
     var color: Int = Color(255, 0, 0, 255).toArgb(),
     var beepOnStart: Boolean = false,
     var beepOnEnd: Boolean = false,
+    var speakOnStart: String = "",
+    var speakOnEnd: String = "",
+    var showScreen: Boolean = false,
     /**
      * Position among rules with the same operation and value. It is assigned on creation and
      * travels with the rule through delete and undo, so a restored rule keeps the precedence it
@@ -102,6 +107,9 @@ data class FormData(
         .setValue(value)
         .setBeepOnStart(beepOnStart)
         .setBeepOnEnd(beepOnEnd)
+        .setSpeakOnStart(speakOnStart.trim())
+        .setSpeakOnEnd(speakOnEnd.trim())
+        .setShowScreen(showScreen)
         .build()
 
     companion object {
@@ -110,7 +118,10 @@ data class FormData(
             operation = coloring.operation,
             color = coloring.color,
             beepOnStart = coloring.beepOnStart,
-            beepOnEnd = coloring.beepOnEnd
+            beepOnEnd = coloring.beepOnEnd,
+            speakOnStart = coloring.speakOnStart,
+            speakOnEnd = coloring.speakOnEnd,
+            showScreen = coloring.showScreen
         )
     }
 }
@@ -234,7 +245,8 @@ fun OperationForm(state: MutableState<FormData>) {
     val expanded = remember { mutableStateOf(false) }
 
     val firstColWidth = Modifier.fillMaxWidth(0.25f)
-    Column {
+    // The rule has grown (sounds, speech, screen switch); scroll on short screens.
+    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
         Row {
             Column(
                 modifier = firstColWidth
@@ -285,6 +297,27 @@ fun OperationForm(state: MutableState<FormData>) {
                 onCheckedChange = { state.value = state.value.copy(beepOnEnd = it) }
             )
             Text(text = stringResource(id = R.string.alarm_beep_end))
+        }
+        TextField(
+            value = state.value.speakOnStart,
+            onValueChange = { state.value = state.value.copy(speakOnStart = it) },
+            label = { Text(stringResource(R.string.alarm_say_start)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        TextField(
+            value = state.value.speakOnEnd,
+            onValueChange = { state.value = state.value.copy(speakOnEnd = it) },
+            label = { Text(stringResource(R.string.alarm_say_end)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.value.showScreen,
+                onCheckedChange = { state.value = state.value.copy(showScreen = it) }
+            )
+            Text(text = stringResource(id = R.string.alarm_show_screen))
         }
         Row {
             Column(
@@ -474,7 +507,11 @@ fun VerticalReorderList(model: StateModel = viewModel()) {
             model.uiState.forEach { current ->
                 ListItem(
                     headlineContent = {
-                        val sound = if (current.beepOnStart || current.beepOnEnd) {
+                        val sound = if (
+                            current.beepOnStart || current.beepOnEnd ||
+                            current.speakOnStart.isNotBlank() ||
+                            current.speakOnEnd.isNotBlank() || current.showScreen
+                        ) {
                             " (" + stringResource(R.string.alarm_sound_on) + ")"
                         } else {
                             ""

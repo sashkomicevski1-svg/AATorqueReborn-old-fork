@@ -239,12 +239,11 @@ open class DashboardFragment : AlbumArt() {
                     }
                 }
                 torqueRefresher.setSoundWatchers(
-                    it.screensList
-                        .flatMap { s -> s.gaugesList + s.displaysList }
-                        .filter { d ->
-                            !d.disabled && d.alarmsList.any { a -> a.beepOnStart || a.beepOnEnd }
-                        }
-                        .distinct()
+                    it.screensList.flatMapIndexed { i, s ->
+                        (s.gaugesList + s.displaysList)
+                            .filter { d -> !d.disabled && d.alarmsList.any(::actsOffScreen) }
+                            .map { d -> d to i }
+                    }
                 )
                 if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                     torqueRefresher.makeExecutors(torqueService)
@@ -776,3 +775,8 @@ open class DashboardFragment : AlbumArt() {
         settingsViewModel.setFont(font)
     }
 }
+
+/** A rule that does something on another screen too: a sound, speech or a screen switch. */
+private fun actsOffScreen(rule: com.aatorque.datastore.Coloring): Boolean =
+    rule.beepOnStart || rule.beepOnEnd || rule.speakOnStart.isNotBlank() ||
+        rule.speakOnEnd.isNotBlank() || rule.showScreen

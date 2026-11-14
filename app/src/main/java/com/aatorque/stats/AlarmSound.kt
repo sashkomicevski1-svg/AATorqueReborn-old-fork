@@ -51,13 +51,25 @@ object AlarmSound {
 
     /** Play [kind] for [key] (a PID and rule), unless the same event played just now. */
     fun trigger(key: String, kind: Kind) {
+        if (allow(key, kind)) playNow(key, kind)
+    }
+
+    /**
+     * True when the event [kind] for [key] did not happen within [COOLDOWN_MS]; records it.
+     * Spoken alerts share this, so a flickering value neither beeps nor talks without end.
+     */
+    fun allow(key: String, kind: Kind): Boolean {
         val now = clock()
         val id = "$key|$kind"
         synchronized(lastPlayed) {
             val last = lastPlayed[id]
-            if (last != null && now - last < COOLDOWN_MS) return
+            if (last != null && now - last < COOLDOWN_MS) return false
             lastPlayed[id] = now
         }
+        return true
+    }
+
+    fun playNow(key: String, kind: Kind) {
         Timber.i("Alarm sound $kind for $key")
         sink?.let {
             it(kind)

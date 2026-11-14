@@ -33,8 +33,19 @@ class AlarmSoundTest {
         AlarmSound.clock = { now }
     }
 
+    private val spoken = mutableListOf<String>()
+    private val screens = mutableListOf<CarScreenEvents.Event>()
+
+    @Before
+    fun hookVoiceAndScreens() {
+        VoiceAlerts.sink = { spoken.add(it) }
+        CarScreenEvents.sink = { screens.add(it) }
+    }
+
     @After
     fun tearDown() {
+        VoiceAlerts.sink = null
+        CarScreenEvents.sink = null
         AlarmSound.sink = null
         AlarmSound.clock = { android.os.SystemClock.elapsedRealtime() }
         AlarmSound.resetCooldowns()
@@ -116,6 +127,34 @@ class AlarmSoundTest {
     }
 
     @Test
+    fun `a rule with text speaks instead of beeping`() {
+        val data = regen(
+            regenRule.toBuilder()
+                .setSpeakOnStart("DPF regeneration started")
+                .setSpeakOnEnd("You can switch off now")
+                .build()
+        )
+        read(data, 0.0, 0)
+        read(data, 1.0, 60_000)
+        read(data, 0.0, 600_000)
+        assertEquals(listOf("DPF regeneration started", "You can switch off now"), spoken)
+        assertEquals(emptyList<AlarmSound.Kind>(), played)
+    }
+
+    @Test
+    fun `a rule can show its screen while it lasts`() {
+        val data = regen(regenRule.toBuilder().setShowScreen(true).build())
+        data.screenIndex = 1
+        read(data, 0.0, 0)
+        read(data, 1.0, 60_000)
+        read(data, 0.0, 600_000)
+        assertEquals(
+            listOf(CarScreenEvents.Event.Show(1), CarScreenEvents.Event.Release(1)),
+            screens
+        )
+    }
+
+    @Test
     fun `an old backup reads the new flags as off`() {
         val old = Coloring.newBuilder().setOperation(Operation.EQ).setValue(1.0).build()
         val parsed = Coloring.parseFrom(old.toByteArray())
@@ -158,7 +197,7 @@ class AlarmSoundTest {
         refresher.data[0] = TorqueData(
             Display.newBuilder().setPid("torque_222a05,470605887").setMaxValue(4).build()
         )
-        refresher.setSoundWatchers(listOf(regen().display))
+        refresher.setSoundWatchers(listOf(regen().display to 0))
 
         refresher.refreshDashboard(service)
         shadowOf(Looper.getMainLooper()).idle()

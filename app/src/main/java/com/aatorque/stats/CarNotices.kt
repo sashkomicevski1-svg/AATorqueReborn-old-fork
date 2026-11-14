@@ -67,11 +67,18 @@ object CarScreenEvents {
     private val events = MutableSharedFlow<Event>(extraBufferCapacity = 8)
     val flow: SharedFlow<Event> = events.asSharedFlow()
 
-    fun show(screen: Int) {
-        events.tryEmit(Event.Show(screen))
-    }
+    /** Replaced in tests to observe the requests. */
+    var sink: ((Event) -> Unit)? = null
 
-    fun release(screen: Int) {
-        events.tryEmit(Event.Release(screen))
+    fun show(screen: Int) = emit(Event.Show(screen))
+
+    fun release(screen: Int) = emit(Event.Release(screen))
+
+    private fun emit(event: Event) {
+        sink?.let {
+            it(event)
+            return
+        }
+        events.tryEmit(event)
     }
 }

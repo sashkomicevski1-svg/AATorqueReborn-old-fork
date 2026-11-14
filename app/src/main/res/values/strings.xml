@@ -208,7 +208,10 @@
     <string name="dpf_interrupted">The last DPF regeneration was interrupted. Keep driving to let it finish.</string>
     <string name="alarm_beep_start">Beep when it starts</string>
     <string name="alarm_beep_end">Beep when it ends</string>
-    <string name="alarm_sound_on">sound</string>
+    <string name="alarm_sound_on">alert</string>
+    <string name="alarm_say_start">Say when it starts (instead of the beep)</string>
+    <string name="alarm_say_end">Say when it ends (instead of the beep)</string>
+    <string name="alarm_show_screen">Switch to this screen while it lasts</string>
     <string name="developer_test_sound_title">Test alarm sound</string>
     <string name="developer_test_sound_summary">Plays the start and end beeps. With Android Auto connected, they should come from the car speakers.</string>
     <string name="status_torque_lost">Torque Pro stopped. Reconnecting…</string>
