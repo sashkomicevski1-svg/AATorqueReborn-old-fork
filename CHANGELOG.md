@@ -1,5 +1,37 @@
 # Changelog
 
+## AATorqueReborn 2.8.0 — car assistant
+
+Settings → **Car assistant** groups the new features. They run only on the car screen, from
+the moment Android Auto opens it to the moment it closes (one "session").
+
+- **DPF assistant.**
+  - It finds the DPF PIDs by their Torque names (SKYACTIV-D PID pack: regeneration status,
+    soot load, trigger level and %, count, distance since the last one, total distance). Any of
+    them can be picked by hand.
+  - During a regeneration, a strip at the bottom of the car screen shows
+    "DPF regeneration · 6:12 · 4.3 km · 63%".
+  - It says when a regeneration starts, finishes, or is paused by the engine.
+  - It can show a chosen dashboard screen during a regeneration and go back afterwards.
+  - If the engine is switched off during a regeneration, the next start warns that it was
+    interrupted.
+  - Drive log keeps the history: duration, distance, interval, soot before and after, and
+    outcome, plus the average distance between regenerations (last 5 against earlier).
+  - Its PIDs are read every 2 s, not every tick, so gauges keep their speed.
+- **Spoken alarms and screen switching.** An alarm rule can say a text of its own when it starts
+  or ends (instead of the beep), and can switch to its gauge's screen while it lasts.
+- **Fault codes.**
+  - Stored and pending engine codes are read 20 s after connecting, then every 5 minutes.
+    The car screen shows them with a short description, and new ones are spoken.
+  - Read only: codes are never cleared.
+  - Needs "Allow plugins full access" in Torque.
+- **Trip summary.** When Android Auto ends, a phone notification shows distance, time, average
+  and top speed, top coolant temperature, DPF regenerations and fault codes. Trips are kept in
+  Drive log.
+- **PID picker:** custom Mode 22 PIDs are always offered. Before, they were hidden while an
+  adapter was connected.
+- Backups stay compatible: the new alarm fields read as empty in older backups.
+
 ## AATorqueReborn 2.7.0
 
 - Alarm sounds. An alarm rule can now "Beep when it starts" and/or "Beep when it ends" (in the

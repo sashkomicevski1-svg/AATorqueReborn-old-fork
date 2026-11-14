@@ -3,31 +3,51 @@ package com.aatorque.stats
 import android.content.Context
 import android.os.SystemClock
 import java.io.File
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import org.prowl.torque.remote.ITorqueService
 import timber.log.Timber
 
 /**
  * One Android Auto session: from the car screen opening to it closing (engine off, phone
- * unplugged). It runs the DPF assistant, and later the fault code and trip features, on the
- * readings of the car dashboard's refresh tick.
+ * unplugged). It runs the DPF assistant, fault codes and the trip summary on the readings of
+ * the car dashboard's refresh tick.
  *
- * Only the car dashboard feeds it. The phone-side preview does not.
+ * Only the car dashboard feeds it; the phone-side preview does not. Slow Torque calls (the PID
+ * list, raw fault code commands) and file work run on the session's own thread, never on the
+ * refresh thread, so the gauges never wait for them.
  */
 object CarSession {
     private const val ROLE_RETRY_MS = 60_000L
+    private const val ROLE_ATTEMPTS = 3
     private const val KEY_DTC = "dtc"
 
     private var appContext: Context? = null
+    private val io = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "car-session").apply { isDaemon = true }
+    }
 
     @Volatile
     var running = false
         private set
 
+    /** Identifies the session the car activity started, so a late end() of an old one is ignored. */
+    private var token = 0
+
     @Volatile
     private var roles: Map<PidRole, String> = emptyMap()
     private var rolesTriedAt = 0L
+    private var roleAttempts = 0
+    private val roleBusy = AtomicBoolean(false)
+    private val dtcBusy = AtomicBoolean(false)
+
+    @Volatile
     private var dpf: DpfMonitor? = null
+
+    @Volatile
     private var dtc: DtcMonitor? = null
+
+    @Volatile
     private var trip: TripRecorder? = null
 
     private val androidOutputs = object : DpfOutputs {
@@ -61,12 +81,15 @@ object CarSession {
         RegenRecord::fromJson
     )
 
+    /** Start a session and return its token for [end]. A session still running is ended first. */
     @Synchronized
-    fun start(context: Context) {
+    fun start(context: Context): Int {
+        if (running) endLocked()
         val app = context.applicationContext
         appContext = app
         roles = emptyMap()
         rolesTriedAt = 0L
+        roleAttempts = 0
         dpf = if (!DpfSettings.enabled(app)) {
             null
         } else {
@@ -83,15 +106,7 @@ object CarSession {
         } else {
             DtcMonitor(
                 dtcStore(app),
-                notice = { n ->
-                    if (n ==
-                        null
-                    ) {
-                        CarNotices.remove(KEY_DTC)
-                    } else {
-                        CarNotices.post(KEY_DTC, n)
-                    }
-                },
+                notice = ::postDtcNotice,
                 speak = { VoiceAlerts.speak(it) },
                 texts = { codes -> dtcText(app, codes) }
             )
@@ -101,22 +116,39 @@ object CarSession {
         } else {
             null
         }
+        CarScreenEvents.reset()
         running = true
-        Timber.i("Session: started")
+        token++
+        Timber.i("Session: started #$token")
+        return token
     }
 
+    /** End the session [sessionToken]; ignored when a newer session has started meanwhile. */
     @Synchronized
-    fun end() {
-        if (!running) return
+    fun end(sessionToken: Int) {
+        if (!running || sessionToken != token) {
+            Timber.i("Session: ignoring end of #$sessionToken (current #$token, running $running)")
+            return
+        }
+        endLocked()
+    }
+
+    private fun endLocked() {
         running = false
         val nowElapsed = SystemClock.elapsedRealtime()
-        dpf?.onSessionEnd(System.currentTimeMillis(), nowElapsed)
-        finishTrip(nowElapsed)
+        val nowWall = System.currentTimeMillis()
+        val endingDpf = dpf
+        val endingTrip = trip
         dpf = null
         dtc = null
         trip = null
         CarNotices.clear()
-        Timber.i("Session: ended")
+        Timber.i("Session: ended #$token")
+        // Files and the notification off the main thread.
+        io.execute {
+            endingDpf?.onSessionEnd(nowWall, nowElapsed)
+            finishTrip(endingTrip, nowElapsed)
+        }
     }
 
     /** PIDs read for the session's features, besides the visible gauges. */
@@ -126,29 +158,49 @@ object CarSession {
     /** Called by the car dashboard's refresh thread after each successful read. */
     fun onTick(ts: ITorqueService?, byPid: Map<String, TorqueData>, nowElapsed: Long) {
         if (!running) return
-        if (ts != null && needsRoles(nowElapsed)) resolveRoles(ts, nowElapsed)
+        if (ts != null && needsRoles(nowElapsed) && roleBusy.compareAndSet(false, true)) {
+            rolesTriedAt = nowElapsed
+            roleAttempts++
+            io.execute {
+                try {
+                    resolveRoles(ts)
+                } finally {
+                    roleBusy.set(false)
+                }
+            }
+        }
         val readings = HashMap<PidRole, Double>()
         for ((role, pid) in roles) {
             val data = byPid[pid] ?: continue
             if (data.hasData()) readings[role] = data.lastData
         }
-        synchronized(this) {
-            dpf?.update(readings, System.currentTimeMillis(), nowElapsed)
-            trip?.update(readings, nowElapsed)
+        val nowWall = System.currentTimeMillis()
+        dpf?.update(readings, nowWall, nowElapsed)
+        trip?.update(readings, nowElapsed)
+        val codes = dtc
+        if (ts != null && codes != null && codes.due(nowElapsed) &&
+            dtcBusy.compareAndSet(false, true)
+        ) {
+            io.execute {
+                try {
+                    codes.readNow(ts, System.currentTimeMillis())
+                } finally {
+                    dtcBusy.set(false)
+                }
+            }
         }
-        if (ts != null) dtc?.maybeRead(ts, nowElapsed, System.currentTimeMillis())
         CarNotices.expire(nowElapsed)
     }
 
+    /**
+     * The PID list is fetched once per session. Without a regeneration status PID (a petrol
+     * car, or names that do not match) it is tried again a minute later, three times at most.
+     */
     private fun needsRoles(now: Long): Boolean = roles.keys.none { it == PidRole.REGEN_STATUS } &&
+        roleAttempts < ROLE_ATTEMPTS &&
         (rolesTriedAt == 0L || now - rolesTriedAt > ROLE_RETRY_MS)
 
-    /**
-     * Ask Torque for every PID and its name once, and pick the PIDs per role. A long list is
-     * one call, done once per session (and once a minute while nothing is found).
-     */
-    private fun resolveRoles(ts: ITorqueService, now: Long) {
-        rolesTriedAt = now
+    private fun resolveRoles(ts: ITorqueService) {
         val context = appContext ?: return
         try {
             val ids = ts.listAllPIDs() ?: return
@@ -161,8 +213,19 @@ object CarSession {
         }
     }
 
-    private fun finishTrip(nowElapsed: Long) {
-        val recorder = trip ?: return
+    /** Session PIDs made Torque fail the batch (a stale manual choice?); stop asking for them. */
+    fun onSessionPidsRejected() {
+        Timber.w("Session: Torque rejected the session PIDs $roles; dropping the custom ones")
+        roles = roles.filterKeys { it == PidRole.SPEED || it == PidRole.COOLANT }
+        roleAttempts = ROLE_ATTEMPTS
+    }
+
+    private fun postDtcNotice(n: CarNotices.Notice?) {
+        if (n == null) CarNotices.remove(KEY_DTC) else CarNotices.post(KEY_DTC, n)
+    }
+
+    private fun finishTrip(recorder: TripRecorder?, nowElapsed: Long) {
+        recorder ?: return
         val context = appContext ?: return
         try {
             val regens = dpfHistory(context).load().filter { it.startWall >= recorder.startWall }
@@ -197,7 +260,7 @@ object CarSession {
     )
 }
 
-/** The DPF assistant's own settings (Settings → DPF assistant). */
+/** The car assistant's settings (Settings → Car assistant). */
 object DpfSettings {
     const val ENABLED = "dpfEnabled"
     const val DTC_ENABLED = "dtcEnabled"

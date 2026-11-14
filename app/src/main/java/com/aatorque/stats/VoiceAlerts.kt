@@ -25,6 +25,9 @@ object VoiceAlerts {
     private val pending = ArrayList<String>()
     private val ids = AtomicInteger()
     private var focus: AudioFocusRequest? = null
+    private var outstanding = 0
+    private var failedAt = 0L
+    private const val RETRY_MS = 60_000L
 
     /** Replaced in tests to observe what would be spoken. */
     @VisibleForTesting
@@ -49,6 +52,11 @@ object VoiceAlerts {
         }
         val context = appContext ?: return
         if (tts == null) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (failedAt != 0L && now - failedAt < RETRY_MS) {
+                Timber.w("Voice: text-to-speech failed recently; not spoken")
+                return
+            }
             tts = TextToSpeech(context) { status -> onInit(status) }
         }
         if (ready) say(text) else pending.add(text)
@@ -60,15 +68,22 @@ object VoiceAlerts {
         if (status != TextToSpeech.SUCCESS) {
             Timber.e("Text-to-speech is not available (status $status)")
             pending.clear()
+            // Try again with a new engine later instead of queueing for ever.
+            engine.shutdown()
+            tts = null
+            ready = false
+            failedAt = android.os.SystemClock.elapsedRealtime()
             return
         }
         engine.setAudioAttributes(attributes)
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) = releaseFocusIfIdle()
+            override fun onDone(utteranceId: String?) = utteranceFinished()
 
             @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) = releaseFocusIfIdle()
+            override fun onError(utteranceId: String?) = utteranceFinished()
+
+            override fun onStop(utteranceId: String?, interrupted: Boolean) = utteranceFinished()
         })
         ready = true
         pending.forEach(::say)
@@ -85,13 +100,17 @@ object VoiceAlerts {
                 .build()
                 .also { audio.requestAudioFocus(it) }
         }
-        engine.speak(text, TextToSpeech.QUEUE_ADD, Bundle(), "alert-${ids.incrementAndGet()}")
+        outstanding++
+        val result =
+            engine.speak(text, TextToSpeech.QUEUE_ADD, Bundle(), "alert-${ids.incrementAndGet()}")
+        if (result != TextToSpeech.SUCCESS) utteranceFinished()
     }
 
+    /** Give the audio focus back (un-duck the music) when the last queued text is done. */
     @Synchronized
-    private fun releaseFocusIfIdle() {
-        val engine = tts ?: return
-        if (engine.isSpeaking) return
+    private fun utteranceFinished() {
+        outstanding = (outstanding - 1).coerceAtLeast(0)
+        if (outstanding > 0) return
         val request = focus ?: return
         focus = null
         appContext?.getSystemService(AudioManager::class.java)?.abandonAudioFocusRequest(request)

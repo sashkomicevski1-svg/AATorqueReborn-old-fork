@@ -78,6 +78,12 @@ class TorqueData(var display: Display) {
      */
     fun hasData(): Boolean = if (timesKnown) hasValidRead else hasAnyRead
 
+    /**
+     * Sounds, speech and screen switches for this display's rules. Off for visible gauges
+     * (the car dashboard's watchers do it) and everywhere in the phone preview.
+     */
+    var alertsEnabled = true
+
     /** Read only for its sound alarms, from a screen that is not shown; never drawn. */
     var isWatcher = false
 
@@ -165,7 +171,7 @@ class TorqueData(var display: Display) {
         if (currentAlarm.value?.color != newValue?.color) {
             currentAlarm.postValue(newValue)
         }
-        updateAlarmSound(newValue)
+        if (alertsEnabled) updateAlarmSound(newValue)
     }
 
     /** The rule that matched at the last evaluation, for start and end sounds. */

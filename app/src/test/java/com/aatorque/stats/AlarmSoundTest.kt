@@ -149,9 +149,18 @@ class AlarmSoundTest {
         read(data, 1.0, 60_000)
         read(data, 0.0, 600_000)
         assertEquals(
-            listOf(CarScreenEvents.Event.Show(1), CarScreenEvents.Event.Release(1)),
+            listOf(CarScreenEvents.Event.Show(1), CarScreenEvents.Event.Release(1, null)),
             screens
         )
+    }
+
+    @Test
+    fun `a gauge on screen only colours and its watcher sounds`() {
+        val refresher = TorqueRefresher()
+        val visible = refresher.populateQuery(0, 0, regen().display)
+        read(visible, 0.0, 0)
+        read(visible, 1.0, 60_000)
+        assertEquals(emptyList<AlarmSound.Kind>(), played)
     }
 
     @Test

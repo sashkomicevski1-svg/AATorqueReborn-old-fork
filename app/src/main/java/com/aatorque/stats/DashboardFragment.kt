@@ -75,11 +75,8 @@ open class DashboardFragment : AlbumArt() {
      * True for the dashboard on the car screen. Only that one runs the car session (DPF
      * assistant, notices, screen switching); the phone-side preview does not.
      */
-    var isCarScreen = false
-
-    /** Screen to go back to after a DPF regeneration showed its own screen. */
-    private var jumpReturn: Int? = null
-    private var jumpedTo: Int? = null
+    val isCarScreen: Boolean
+        get() = arguments?.getBoolean(ARG_CAR_SCREEN) == true
 
     private lateinit var mBtnNext: ImageButton
     private lateinit var mBtnPrev: ImageButton
@@ -131,6 +128,12 @@ open class DashboardFragment : AlbumArt() {
 
     companion object {
         const val DISPLAY_OFFSET = 3
+        private const val ARG_CAR_SCREEN = "carScreen"
+
+        /** The dashboard for the car screen. The flag is an argument, so it survives a restore. */
+        fun forCar() = DashboardFragment().apply {
+            arguments = Bundle().apply { putBoolean(ARG_CAR_SCREEN, true) }
+        }
         private const val TORQUE_PACKAGE = "org.prowl.torque"
     }
 
@@ -152,6 +155,8 @@ open class DashboardFragment : AlbumArt() {
         // but must not drop Torque. See TorqueConnections.
         torqueService = TorqueConnections.acquire(context)
         if (isCarScreen) torqueRefresher.session = CarSession
+        // The phone preview stays silent: no sounds, speech or screen switches.
+        torqueRefresher.alertsEnabled = isCarScreen
         torqueRefresher.updateInterval(DevOptions.refreshIntervalMs(context), torqueService)
         DevOptions.prefs(context).registerOnSharedPreferenceChangeListener(devPrefListener)
         if (!torqueService.lastBindOk && !torqueRefresher.simulate) {
@@ -238,13 +243,15 @@ open class DashboardFragment : AlbumArt() {
                         displays[index]?.setupElement(td)
                     }
                 }
-                torqueRefresher.setSoundWatchers(
-                    it.screensList.flatMapIndexed { i, s ->
-                        (s.gaugesList + s.displaysList)
-                            .filter { d -> !d.disabled && d.alarmsList.any(::actsOffScreen) }
-                            .map { d -> d to i }
-                    }
-                )
+                if (isCarScreen) {
+                    torqueRefresher.setSoundWatchers(
+                        it.screensList.flatMapIndexed { i, s ->
+                            (s.gaugesList + s.displaysList)
+                                .filter { d -> !d.disabled && d.alarmsList.any(::actsOffScreen) }
+                                .map { d -> d to i }
+                        }
+                    )
+                }
                 if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                     torqueRefresher.makeExecutors(torqueService)
                 }
@@ -516,7 +523,15 @@ open class DashboardFragment : AlbumArt() {
         Timber.i("Lifecycle: dashboard onStop")
         super.onStop()
         mStarted = false
-        torqueRefresher.stopExecutors()
+        if (isCarScreen) {
+            // The car dashboard keeps reading until Android Auto closes it. A stop can mean
+            // another Android Auto app is in front, but possibly also a locked phone while the
+            // gauges are still on the car screen; the diagnostics log tells which. Alarms with
+            // sounds and the car session (DPF, trip) must go on either way.
+            Timber.i("Lifecycle: car dashboard stopped; polling continues")
+        } else {
+            torqueRefresher.stopExecutors()
+        }
     }
 
     override fun onPause() {
@@ -732,23 +747,44 @@ open class DashboardFragment : AlbumArt() {
             val count = prefs.screensCount
             if (count == 0) return@updateData prefs
             val current = abs(prefs.currentScreen) % count
+            val jumps = CarScreenEvents
             when (event) {
                 is CarScreenEvents.Event.Show -> {
-                    if (event.screen >= count || event.screen == current) return@updateData prefs
-                    if (jumpedTo == null) jumpReturn = current
-                    jumpedTo = event.screen
-                    prefs.toBuilder().setCurrentScreen(event.screen).build()
+                    if (event.screen >= count) return@updateData prefs
+                    // Remember where the driver was, once, before the first switch.
+                    if (jumps.jumpedTo == null) {
+                        jumps.returnTo = current.takeIf { it != event.screen }
+                    }
+                    jumps.jumpedTo = event.screen
+                    if (event.screen == current) {
+                        prefs
+                    } else {
+                        prefs.toBuilder().setCurrentScreen(event.screen).build()
+                    }
                 }
 
                 is CarScreenEvents.Event.Release -> {
-                    val back = jumpReturn
-                    val was = jumpedTo
-                    jumpReturn = null
-                    jumpedTo = null
-                    if (was == event.screen && current == event.screen && back != null) {
-                        prefs.toBuilder().setCurrentScreen(back).build()
-                    } else {
+                    if (jumps.jumpedTo != event.screen) return@updateData prefs
+                    val next = event.next?.takeIf { it < count }
+                    if (current != event.screen) {
+                        // The driver moved on; they are in charge now.
+                        jumps.returnTo = null
+                        jumps.jumpedTo = null
                         prefs
+                    } else if (next != null) {
+                        jumps.jumpedTo = next
+                        prefs.toBuilder().setCurrentScreen(next).build()
+                    } else {
+                        val back = jumps.returnTo?.takeIf { it < count }
+                        jumps.returnTo = null
+                        jumps.jumpedTo = null
+                        if (back ==
+                            null
+                        ) {
+                            prefs
+                        } else {
+                            prefs.toBuilder().setCurrentScreen(back).build()
+                        }
                     }
                 }
             }

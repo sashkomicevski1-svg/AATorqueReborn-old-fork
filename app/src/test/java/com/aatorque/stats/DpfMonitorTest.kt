@@ -57,37 +57,63 @@ class DpfMonitorTest {
         trigger?.let { put(PidRole.REGEN_TRIGGER, it) }
     }
 
+    /** A status change needs two readings in a row, 2 s apart, like the session's cadence. */
+    private fun twice(m: DpfMonitor, r: Map<PidRole, Double>, at: Long) {
+        m.update(r, at, at)
+        m.update(r, at + 2_000, at + 2_000)
+    }
+
     @Test
     fun `a full regeneration is recorded as completed`() {
         val out = Outputs()
         val m = DpfMonitor(history, out, screenDuringRegen = 1)
-        m.update(readings(0.0, 23.5, 100_000.0), 0, 0)
-        m.update(readings(1.0, 24.0, 100_001.0, trigger = 10.0), 1_000, 1_000)
+        twice(m, readings(0.0, 23.5, 100_000.0), 0)
+        twice(m, readings(1.0, 24.0, 100_001.0, trigger = 10.0), 10_000)
         assertTrue(m.isActive)
         assertEquals(CarNotices.Level.ACTIVE, out.notices[DpfMonitor.KEY_ACTIVE]?.level)
+        // Saved as soon as it starts, so it survives the app being killed.
+        assertEquals(RegenRecord.Outcome.IN_PROGRESS, history.load().single().outcome)
         m.update(readings(1.0, 12.0, 100_008.0, trigger = 70.0), 400_000, 400_000)
         assertTrue(out.notices[DpfMonitor.KEY_ACTIVE]!!.text.contains("7.0 km"))
-        m.update(readings(0.0, 2.0, 100_012.5, count = 41.0), 700_000, 700_000)
+        twice(m, readings(0.0, 2.0, 100_012.5, count = 41.0), 700_000)
 
         assertFalse(m.isActive)
         assertNull(out.notices[DpfMonitor.KEY_ACTIVE])
         val r = history.load().single()
         assertEquals(RegenRecord.Outcome.COMPLETED, r.outcome)
+        assertEquals(10_000L, r.startWall)
         assertEquals(11.5, r.distanceKm, 0.001)
         assertEquals(412.0, r.intervalKm!!, 0.0)
         assertEquals(70.0, r.triggerMax!!, 0.0)
-        assertEquals(699_000L, r.durationMs)
+        assertEquals(692_000L, r.durationMs)
         assertEquals(listOf(DpfTexts().started, DpfTexts().finished), out.spoken)
         assertEquals(listOf(1), out.shown)
         assertEquals(listOf(1), out.released)
     }
 
     @Test
+    fun `one odd status reading does not start or end anything`() {
+        val out = Outputs()
+        val m = DpfMonitor(history, out)
+        m.update(readings(0.0, 20.0, 100_000.0), 0, 0)
+        m.update(readings(1.0, 20.0, 100_000.0), 2_000, 2_000)
+        m.update(readings(0.0, 20.0, 100_000.0), 4_000, 4_000)
+        assertFalse(m.isActive)
+        assertTrue(history.load().isEmpty())
+
+        twice(m, readings(1.0, 24.0, 100_000.0), 10_000)
+        m.update(readings(0.0, 23.0, 100_001.0), 20_000, 20_000)
+        m.update(readings(1.0, 22.0, 100_002.0), 22_000, 22_000)
+        assertTrue(m.isActive)
+        assertEquals(listOf(DpfTexts().started), out.spoken)
+    }
+
+    @Test
     fun `a regeneration that ends with soot still high is paused`() {
         val out = Outputs()
         val m = DpfMonitor(history, out)
-        m.update(readings(1.0, 24.0, 100_000.0), 0, 0)
-        m.update(readings(0.0, 20.0, 100_003.0), 120_000, 120_000)
+        twice(m, readings(1.0, 24.0, 100_000.0), 0)
+        twice(m, readings(0.0, 20.0, 100_003.0), 120_000)
         assertEquals(RegenRecord.Outcome.PAUSED, history.load().single().outcome)
         assertEquals(DpfTexts().paused, out.spoken.last())
     }
@@ -96,7 +122,7 @@ class DpfMonitorTest {
     fun `engine off during a regeneration is reported at the next start`() {
         val out = Outputs()
         val m = DpfMonitor(history, out)
-        m.update(readings(1.0, 24.0, 100_000.0), 0, 0)
+        twice(m, readings(1.0, 24.0, 100_000.0), 0)
         m.update(readings(1.0, 18.0, 100_004.0), 300_000, 300_000)
         m.onSessionEnd(310_000, 310_000)
         assertEquals(RegenRecord.Outcome.OPEN_AT_SHUTDOWN, history.load().single().outcome)
@@ -112,13 +138,57 @@ class DpfMonitorTest {
     }
 
     @Test
+    fun `a regeneration lost with the app is checked at the next start too`() {
+        val m = DpfMonitor(history, Outputs())
+        twice(m, readings(1.0, 24.0, 100_000.0), 0)
+        // No onSessionEnd: the process died. The record stays IN_PROGRESS.
+        val next = Outputs()
+        DpfMonitor(history, next).update(readings(0.0, 23.0, 100_004.0), 1_000_000, 5_000)
+        assertEquals(RegenRecord.Outcome.INTERRUPTED, history.load().single().outcome)
+        assertEquals(listOf(DpfTexts().interrupted), next.spoken)
+    }
+
+    @Test
+    fun `the start-up check waits for a soot reading`() {
+        val m = DpfMonitor(history, Outputs())
+        twice(m, readings(1.0, 24.0, 100_000.0), 0)
+        m.onSessionEnd(10_000, 10_000)
+        val next = Outputs()
+        val m2 = DpfMonitor(history, next)
+        // Status arrives before soot.
+        m2.update(mapOf(PidRole.REGEN_STATUS to 0.0), 1_000_000, 5_000)
+        assertEquals(RegenRecord.Outcome.OPEN_AT_SHUTDOWN, history.load().single().outcome)
+        assertTrue(next.spoken.isEmpty())
+        m2.update(readings(0.0, 3.0, 100_010.0), 1_002_000, 7_000)
+        assertEquals(RegenRecord.Outcome.COMPLETED, history.load().single().outcome)
+        assertTrue(next.spoken.isEmpty())
+    }
+
+    @Test
     fun `engine off near the end, soot already low, counts as completed`() {
         val m = DpfMonitor(history, Outputs())
-        m.update(readings(1.0, 24.0, 100_000.0), 0, 0)
+        twice(m, readings(1.0, 24.0, 100_000.0), 0)
         m.update(readings(1.0, 3.0, 100_010.0), 600_000, 600_000)
         m.onSessionEnd(601_000, 601_000)
         DpfMonitor(history, Outputs()).update(readings(0.0, 3.0, 100_010.0), 2_000_000, 1_000)
         assertEquals(RegenRecord.Outcome.COMPLETED, history.load().single().outcome)
+    }
+
+    @Test
+    fun `distance from speed when the car has no odometer PID`() {
+        val m = DpfMonitor(history, Outputs())
+        val status = mapOf(PidRole.REGEN_STATUS to 1.0, PidRole.SOOT to 24.0)
+        twice(m, status, 0)
+        // Speed every 2 s; ticks in between carry no speed (the session reads it every 2 s).
+        var t = 2_000L
+        repeat(30) {
+            m.update(emptyMap(), t + 150, t + 150)
+            m.update(status + (PidRole.SPEED to 90.0), t + 2_000, t + 2_000)
+            t += 2_000
+        }
+        twice(m, mapOf(PidRole.REGEN_STATUS to 0.0, PidRole.SOOT to 2.0), t + 2_000)
+        // About a minute at 90 km/h.
+        assertEquals(1.5, history.load().single().distanceKm, 0.1)
     }
 
     @Test
@@ -134,8 +204,8 @@ class DpfMonitorTest {
     fun `silent when voice is off`() {
         val out = Outputs()
         val m = DpfMonitor(history, out, voice = false)
-        m.update(readings(1.0, 24.0, 100_000.0), 0, 0)
-        m.update(readings(0.0, 2.0, 100_010.0), 600_000, 600_000)
+        twice(m, readings(1.0, 24.0, 100_000.0), 0)
+        twice(m, readings(0.0, 2.0, 100_010.0), 600_000)
         assertTrue(out.spoken.isEmpty())
     }
 

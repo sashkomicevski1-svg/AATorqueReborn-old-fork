@@ -119,6 +119,9 @@ class TorqueRefresher {
             TorqueData(query)
         }
         torqueData.screenIndex = screen
+        // Sounds, speech and screen switches come from the watchers only: they are read on
+        // every screen, so their state never goes stale. Visible gauges only colour.
+        torqueData.alertsEnabled = false
         cache.getOrPut(screen) {
             HashMap()
         }[pos] = torqueData
@@ -142,6 +145,7 @@ class TorqueRefresher {
                 TorqueData(display).apply {
                     isWatcher = true
                     screenIndex = screen
+                    alertsEnabled = this@TorqueRefresher.alertsEnabled
                 }
             }
         }
@@ -166,11 +170,18 @@ class TorqueRefresher {
         return tickCount++ % every == 0L
     }
 
-    /** Visible gauges, sound watchers not on screen, and (when due) the session's PIDs. */
+    /** False in the phone preview: nothing there may sound or switch screens. */
+    @Volatile
+    var alertsEnabled = true
+
+    private var sessionIncluded = false
+    private var sessionFailures = 0
+
+    /** Visible gauges, the alert watchers, and (when due) the session's PIDs. */
     private fun pollTargets(includeSession: Boolean = true): List<TorqueData> = synchronized(data) {
         val visible = data.values.filter { it.pid != null }
-        val visiblePids = visible.mapTo(HashSet()) { it.display.pid }
-        val watched = watchers.values.filter { it.pid != null && it.display.pid !in visiblePids }
+        // Watchers are read even when the same PID is on screen: they carry the alert state.
+        val watched = watchers.values.filter { it.pid != null }
         val known = HashSet<String?>().apply {
             visible.forEach { add(it.pid) }
             watched.forEach { add(it.pid) }
@@ -271,7 +282,9 @@ class TorqueRefresher {
      * scheduler.
      */
     fun refreshDashboard(service: TorqueService) {
-        val targets = pollTargets(includeSession = sessionDue())
+        val includeSession = sessionDue()
+        val targets = pollTargets(includeSession)
+        sessionIncluded = includeSession && targets.any { it in sessionData.values }
         if (targets.isEmpty()) {
             return
         }
@@ -310,9 +323,20 @@ class TorqueRefresher {
             }
             if (values == null || values.size != targets.size) {
                 Timber.w("Torque returned ${values?.size ?: 0} values for ${pids.size} PIDs")
+                if (sessionIncluded) {
+                    // The car session's PIDs may be what Torque refuses (a stale manual
+                    // choice). The next tick runs without them; after three such failures
+                    // the session stops asking for its custom PIDs.
+                    if (++sessionFailures >= 3) {
+                        session?.onSessionPidsRejected()
+                        sessionFailures = 0
+                    }
+                    return@runIfConnected
+                }
                 targets.forEach { doRefresh(service, it) }
                 return@runIfConnected
             }
+            if (sessionIncluded) sessionFailures = 0
             // Torque's per-PID read time tells a real 0 from "never read" and drives the stale
             // marking. A failing call or a short answer falls back to the values alone.
             val times = try {

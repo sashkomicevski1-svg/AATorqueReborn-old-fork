@@ -54,31 +54,83 @@ object CarNotices {
     }
 }
 
-/** Requests from alarms and the DPF assistant to show a given dashboard screen. */
+/**
+ * Requests from alarms and the DPF assistant to show a given dashboard screen.
+ *
+ * Several conditions can ask for screens at once; the latest one still active wins. When the
+ * last request ends, the car goes back to the screen it was on, unless the driver moved to
+ * another one meanwhile. A request that ends is let go only after [RELEASE_DELAY_MS], and a
+ * new request for the same screen in that time cancels it, so a value that hovers at a
+ * threshold does not flip screens back and forth.
+ *
+ * The state lives here, not in the dashboard fragment, so a theme change (which replaces the
+ * fragment) does not lose it.
+ */
 object CarScreenEvents {
+    const val RELEASE_DELAY_MS = 5_000L
+
     sealed interface Event {
-        /** Show [screen] while the condition lasts. */
+        /** Switch to [screen]. */
         data class Show(val screen: Int) : Event
 
-        /** The condition is over; go back if the driver has not moved on meanwhile. */
-        data class Release(val screen: Int) : Event
+        /** [screen] is no longer requested; [next] is another active request, if any. */
+        data class Release(val screen: Int, val next: Int?) : Event
     }
 
     private val events = MutableSharedFlow<Event>(extraBufferCapacity = 8)
     val flow: SharedFlow<Event> = events.asSharedFlow()
 
-    /** Replaced in tests to observe the requests. */
+    /** Replaced in tests to observe the requests as they are made. */
     var sink: ((Event) -> Unit)? = null
 
-    fun show(screen: Int) = emit(Event.Show(screen))
+    private val main by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private val active = LinkedHashSet<Int>()
+    private val pendingRelease = HashMap<Int, Runnable>()
 
-    fun release(screen: Int) = emit(Event.Release(screen))
+    /** Screen to go back to when no request is left; set by the dashboard. */
+    var returnTo: Int? = null
 
-    private fun emit(event: Event) {
+    /** Screen the dashboard switched to for a request. */
+    var jumpedTo: Int? = null
+
+    fun show(screen: Int) {
         sink?.let {
-            it(event)
+            it(Event.Show(screen))
             return
         }
-        events.tryEmit(event)
+        main.post {
+            pendingRelease.remove(screen)?.let { main.removeCallbacks(it) }
+            active.remove(screen)
+            active.add(screen)
+            events.tryEmit(Event.Show(screen))
+        }
+    }
+
+    fun release(screen: Int) {
+        sink?.let {
+            it(Event.Release(screen, null))
+            return
+        }
+        main.post {
+            if (screen !in active || pendingRelease.containsKey(screen)) return@post
+            val task = Runnable {
+                pendingRelease.remove(screen)
+                active.remove(screen)
+                events.tryEmit(Event.Release(screen, active.lastOrNull()))
+            }
+            pendingRelease[screen] = task
+            main.postDelayed(task, RELEASE_DELAY_MS)
+        }
+    }
+
+    /** A new Android Auto session starts from scratch. */
+    fun reset() {
+        main.post {
+            pendingRelease.values.forEach { main.removeCallbacks(it) }
+            pendingRelease.clear()
+            active.clear()
+            returnTo = null
+            jumpedTo = null
+        }
     }
 }

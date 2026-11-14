@@ -172,6 +172,7 @@
     <string name="trip_enabled_title">Trip summary</string>
     <string name="trip_enabled_summary">After each drive, a notification on the phone: distance, time, speeds, coolant, DPF regenerations, fault codes. Trips are kept in Drive log.</string>
     <string name="trip_channel">Trip summary</string>
+    <string name="trip_no_permission">Notifications are off for AA Torque: trips are only kept in Drive log. Allow notifications in Android settings to get the summary.</string>
     <string name="trip_title">Trip: %1$.1f km · %2$d min</string>
     <string name="trip_avg_speed">avg %1$.0f km/h</string>
     <string name="trip_max_speed">max %1$.0f km/h</string>

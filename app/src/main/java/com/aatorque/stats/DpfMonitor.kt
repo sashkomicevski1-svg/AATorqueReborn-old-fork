@@ -143,7 +143,13 @@ class DpfMonitor(
     var screenDuringRegen: Int = -1,
     var voice: Boolean = true
 ) {
-    private var initialized = false
+    private var checkPending = true
+    private var statusReadings = 0
+    private var activeStreak = 0
+    private var inactiveStreak = 0
+    private var firstActiveWall = 0L
+    private var firstActiveElapsed = 0L
+    private var lastSaved = 0L
     private var active = false
     private var open: RegenRecord? = null
     private var startElapsed = 0L
@@ -158,6 +164,13 @@ class DpfMonitor(
         const val WARNING_SHOW_MS = 90_000L
         const val NOTICE_ACTIVE_PRIORITY = 50
         const val NOTICE_WARNING_PRIORITY = 80
+
+        /** Status readings in a row before a start or an end counts (about 4 s). */
+        const val CONFIRM_READINGS = 2
+
+        /** Give up waiting for a soot reading for the start-up check after this many. */
+        const val CHECK_GIVE_UP_READINGS = 5
+        const val SAVE_EVERY_MS = 30_000L
     }
 
     val isActive: Boolean get() = active
@@ -166,14 +179,28 @@ class DpfMonitor(
     fun update(readings: Map<PidRole, Double>, nowWall: Long, nowElapsed: Long) {
         integrateSpeed(readings[PidRole.SPEED], nowElapsed)
         val status = readings[PidRole.REGEN_STATUS] ?: return
-        if (!initialized) {
-            initialized = true
-            checkPreviousSession(readings, nowElapsed)
-        }
+        statusReadings++
+        if (checkPending) checkPreviousSession(readings, nowElapsed)
+        // One odd reading must not start or end a regeneration: two in a row are needed.
         val nowActive = status > 0.5
-        if (nowActive && !active) start(readings, nowWall, nowElapsed)
-        if (nowActive) progress(readings, nowElapsed)
-        if (!nowActive && active) finish(readings, nowWall, nowElapsed, shutdown = false)
+        if (nowActive) {
+            if (activeStreak == 0) {
+                firstActiveWall = nowWall
+                firstActiveElapsed = nowElapsed
+            }
+            activeStreak++
+            inactiveStreak = 0
+        } else {
+            inactiveStreak++
+            activeStreak = 0
+        }
+        if (!active && activeStreak >= CONFIRM_READINGS) {
+            start(readings, firstActiveWall, firstActiveElapsed)
+        }
+        if (active && nowActive) progress(readings, nowWall, nowElapsed)
+        if (active && inactiveStreak >= CONFIRM_READINGS) {
+            finish(readings, nowWall, nowElapsed, shutdown = false)
+        }
     }
 
     /** Android Auto is ending: an open regeneration is marked for a check at the next start. */
@@ -181,16 +208,22 @@ class DpfMonitor(
     fun onSessionEnd(nowWall: Long, nowElapsed: Long) {
         if (active) finish(emptyMap(), nowWall, nowElapsed, shutdown = true)
         out.notice(KEY_ACTIVE, null)
-        initialized = false
+        checkPending = true
+        statusReadings = 0
+        activeStreak = 0
+        inactiveStreak = 0
     }
 
     private fun integrateSpeed(speedKmh: Double?, nowElapsed: Long) {
+        // Ticks without a speed reading (it is read every 2 s when not on screen) keep the
+        // last reading time, so the next reading covers the whole gap (at most 5 s).
+        speedKmh ?: return
         val previousAt = lastSpeedElapsed
-        if (speedKmh != null && previousAt != null && active) {
+        if (previousAt != null && active) {
             val dt = (nowElapsed - previousAt).coerceIn(0L, 5_000L)
             integratedKm += speedKmh * dt / 3_600_000.0
         }
-        lastSpeedElapsed = if (speedKmh != null) nowElapsed else null
+        lastSpeedElapsed = nowElapsed
     }
 
     private fun distanceKm(readings: Map<PidRole, Double>): Double {
@@ -212,13 +245,22 @@ class DpfMonitor(
             countStart = readings[PidRole.REGEN_COUNT]
         )
         open = record
+        save(record)
+        lastSaved = nowElapsed
         Timber.i("DPF: regeneration started $readings")
         if (voice) out.speak(texts.started)
         if (screenDuringRegen >= 0) out.showScreen(screenDuringRegen)
     }
 
-    private fun progress(readings: Map<PidRole, Double>, nowElapsed: Long) {
+    private fun progress(readings: Map<PidRole, Double>, nowWall: Long, nowElapsed: Long) {
         val record = open ?: return
+        record.durationMs = nowElapsed - startElapsed
+        record.endWall = nowWall
+        // Saved now and then, so a regeneration survives the app being killed.
+        if (nowElapsed - lastSaved >= SAVE_EVERY_MS) {
+            save(record)
+            lastSaved = nowElapsed
+        }
         readings[PidRole.REGEN_TRIGGER]?.let { t ->
             record.triggerMax = maxOf(record.triggerMax ?: t, t)
         }
@@ -279,8 +321,14 @@ class DpfMonitor(
             )
         }
         if (screenDuringRegen >= 0) out.releaseScreen(screenDuringRegen)
+        save(record)
+    }
+
+    /** Insert or replace [record] (by start time) in the history file. */
+    private fun save(record: RegenRecord) {
         val all = history.load()
-        all.add(record)
+        val index = all.indexOfLast { it.startWall == record.startWall }
+        if (index >= 0) all[index] = record.copy() else all.add(record.copy())
         history.save(all)
     }
 
@@ -299,15 +347,31 @@ class DpfMonitor(
      */
     private fun checkPreviousSession(readings: Map<PidRole, Double>, nowElapsed: Long) {
         val all = history.load()
-        val last = all.lastOrNull() ?: return
-        if (last.outcome != RegenRecord.Outcome.OPEN_AT_SHUTDOWN) return
-        val soot = readings[PidRole.SOOT]
-        val start = last.sootStart
-        val done = when {
-            soot != null && start != null && start > 0 -> soot <= start * COMPLETED_SOOT_FRACTION
-            else -> false
+        // The regeneration of this session (saved as soon as it starts) is not "the last one".
+        val current = open?.startWall
+        val last = all.lastOrNull { it.startWall != current }
+        // OPEN_AT_SHUTDOWN: Android Auto ended during it. IN_PROGRESS: the app was killed.
+        if (last == null || (
+                last.outcome != RegenRecord.Outcome.OPEN_AT_SHUTDOWN &&
+                    last.outcome != RegenRecord.Outcome.IN_PROGRESS
+                )
+        ) {
+            checkPending = false
+            return
         }
-        last.sootEnd = soot ?: last.sootEnd
+        val soot = readings[PidRole.SOOT]
+        if (soot == null) {
+            // Soot is read with the other DPF PIDs but may arrive a reading later.
+            if (statusReadings >= CHECK_GIVE_UP_READINGS) {
+                Timber.w("DPF: no soot reading; cannot tell how the last regeneration ended")
+                checkPending = false
+            }
+            return
+        }
+        checkPending = false
+        val start = last.sootStart
+        val done = start != null && start > 0 && soot <= start * COMPLETED_SOOT_FRACTION
+        last.sootEnd = soot
         last.outcome = if (done) RegenRecord.Outcome.COMPLETED else RegenRecord.Outcome.INTERRUPTED
         history.save(all)
         Timber.i("DPF: previous regeneration resolved as ${last.outcome}, soot now $soot")

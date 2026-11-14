@@ -1,10 +1,16 @@
 package com.aatorque.prefs
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.preference.CheckBoxPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
 import com.aatorque.stats.PidRole
@@ -20,6 +26,26 @@ import kotlinx.coroutines.launch
  */
 class DpfSettingsFragment : PreferenceFragmentCompat() {
     private var bound = false
+
+    /** The trip summary is a notification; Android 13+ asks for it. */
+    private val askNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted) {
+                findPreference<CheckBoxPreference>("tripEnabled")?.summary =
+                    getString(R.string.trip_no_permission)
+            }
+        }
+
+    private fun requestNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT < 33) return
+        val state = ContextCompat.checkSelfPermission(
+            requireContext(),
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+        if (state != PackageManager.PERMISSION_GRANTED) {
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
     private var wrapper: TorqueServiceWrapper? = null
 
     private val roleKeys = PidRole.entries
@@ -80,6 +106,13 @@ class DpfSettingsFragment : PreferenceFragmentCompat() {
             screenPref.entryValues =
                 (listOf("-1") + titles.indices.map { it.toString() }).toTypedArray()
             if (screenPref.value == null) screenPref.value = "-1"
+        }
+
+        val tripPref = findPreference<CheckBoxPreference>("tripEnabled")!!
+        if (tripPref.isChecked) requestNotificationsIfNeeded()
+        tripPref.setOnPreferenceChangeListener { _, newValue ->
+            if (newValue == true) requestNotificationsIfNeeded()
+            true
         }
 
         bound = TorqueServiceWrapper.runStartIntent(requireContext(), connection)

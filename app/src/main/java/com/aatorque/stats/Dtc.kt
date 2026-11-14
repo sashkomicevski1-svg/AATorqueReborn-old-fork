@@ -20,55 +20,84 @@ data class Dtc(val code: String, val pending: Boolean) {
  * - `7E8 06 43 02 01 33 24 02`: with an 11-bit header and the frame length.
  * - `00A` / `0: 43 04 01 33 24 02` / `1: 00 4C ...`: a multi-frame reply without headers.
  * - `7E8 10 0A 43 04 ...` / `7E8 21 ...`: a multi-frame reply with headers.
- * - `NO DATA`, `SEARCHING...`, `>`: no codes.
+ * - `NO DATA`: no codes. `UNABLE TO CONNECT`, `BUS BUSY`, `?`...: the request failed.
  *
- * Several ECUs can answer; their codes are merged. Codes 0000 are padding.
+ * Several ECUs can answer; each reply is read on its own and the codes are merged. Codes 0000
+ * are padding.
  */
 object DtcParser {
     private val HEX = Regex("^[0-9A-Fa-f]+$")
+    private val SPACES = Regex("\\s+")
 
-    fun parse(lines: Array<String>?, mode: Int): List<String> {
-        if (lines == null) return emptyList()
+    /** Adapter answers that mean the request failed, not that there are no codes. */
+    private val FAILURES = listOf(
+        "UNABLE TO CONNECT",
+        "BUS BUSY",
+        "BUS ERROR",
+        "CAN ERROR",
+        "DATA ERROR",
+        "FB ERROR",
+        "BUFFER FULL",
+        "STOPPED",
+        "ERROR",
+        "?"
+    )
+
+    /**
+     * The codes in an ELM327 reply, an empty list for "no codes" (NO DATA, or a count of 0),
+     * or null when the request failed and nothing is known.
+     */
+    fun parse(lines: Array<String>?, mode: Int): List<String>? {
+        // Torque may return one string with the lines joined by CR or LF.
+        val all = lines
+            ?.flatMap { it.split('\r', '\n') }
+            ?.map { it.trim().uppercase() }
+            ?.filter { it.isNotEmpty() && !it.startsWith(">") && !it.contains("SEARCHING") }
+        if (all.isNullOrEmpty()) return null
+        if (all.any { line -> FAILURES.any { line.contains(it) } }) return null
         val reply = 0x40 + mode
-        // Bytes per sender: a header when the ELM shows one, "" otherwise.
+        val replyHex = "%02X".format(reply)
+        // Bytes per sender: the header when the ELM shows one; without headers, every reply
+        // that starts on a new line is its own sender, so two ECUs answering do not merge.
         val streams = LinkedHashMap<String, MutableList<Int>>()
-        for (raw in lines) {
-            val line = raw.trim().uppercase()
-            if (line.isEmpty() || line.contains("NO DATA") || line.contains("SEARCHING") ||
-                line.startsWith(">") || line.contains("ERROR") || line.contains("STOPPED")
-            ) {
-                continue
-            }
-            var tokens = line.split(Regex("\\s+")).filter { it.isNotEmpty() }
-            var sender = ""
-            // Multi-frame without headers: "0: 43 04 ..." (the total length line, "00A", is
-            // a single 3-digit token and is dropped below).
-            if (tokens.first().endsWith(":")) {
-                tokens = tokens.drop(1)
-            } else if (tokens.size > 1 && isHeader(tokens.first())) {
-                // A header (7E8, 18DAF110), then the ISO-TP frame control byte.
-                sender = tokens.first()
-                tokens = tokens.drop(1)
-                val pci = tokens.firstOrNull() ?: continue
-                tokens = when (pci.firstOrNull()) {
-                    '1' -> tokens.drop(2)
-
-                    // first frame: 1L LL
-                    '2' -> tokens.drop(1)
-
-                    // consecutive frame
-                    else -> tokens.drop(1) // single frame: length
+        var current = ""
+        var replies = 0
+        for (line in all) {
+            if (line.contains("NO DATA")) continue
+            var tokens = line.split(SPACES).filter { it.isNotEmpty() }
+            when {
+                tokens.first().endsWith(":") -> {
+                    // Multi-frame without headers; frame 0 starts a new reply.
+                    if (tokens.first() == "0:") current = "#${replies++}"
+                    tokens = tokens.drop(1)
                 }
-            } else if (tokens.size == 1 && tokens.first().length == 3) {
-                continue
+
+                tokens.size > 1 && isHeader(tokens.first()) -> {
+                    // A header (7E8, 18DAF110), then the ISO-TP frame control byte(s).
+                    current = tokens.first()
+                    tokens = tokens.drop(1)
+                    tokens = if (tokens.firstOrNull()?.startsWith("1") == true) {
+                        tokens.drop(2) // first frame: 1L LL
+                    } else {
+                        tokens.drop(1) // single frame length, or consecutive frame 2N
+                    }
+                }
+
+                tokens.size == 1 && tokens.first().length == 3 -> continue
+
+                // "00A": total length
+
+                tokens.first() == replyHex -> current = "#${replies++}" // single frame, no header
             }
             val bytes = tokens.filter { it.length == 2 && it.matches(HEX) }.map { it.toInt(16) }
-            streams.getOrPut(sender) { mutableListOf() }.addAll(bytes)
+            streams.getOrPut(current) { mutableListOf() }.addAll(bytes)
         }
         val codes = LinkedHashSet<String>()
+        var sawReply = false
         for (bytes in streams.values) {
             val start = bytes.indexOf(reply)
             if (start < 0) continue
+            sawReply = true
             val rest = bytes.drop(start + 1)
             val count = rest.firstOrNull() ?: continue
             // CAN replies carry a code count; older protocols do not. Use the count when the
@@ -78,7 +107,8 @@ object DtcParser {
                 if (a != 0 || b != 0) codes.add(decode(a, b))
             }
         }
-        return codes.toList()
+        // NO DATA only, or nothing that answers the request: no codes.
+        return if (sawReply || streams.isEmpty()) codes.toList() else null
     }
 
     /** An 11-bit (7E8) or 29-bit (18DAF110) CAN header as the ELM prints it. */
@@ -109,27 +139,37 @@ class DtcMonitor(
         const val NOTICE_PRIORITY = 30
     }
 
-    private var sessionStart = 0L
-    private var lastRead = 0L
+    private var sessionStart: Long? = null
+    private var lastRead: Long? = null
     private var announced: Set<String> = emptySet()
 
+    /** True when a read is due; marks it as taken. Cheap, called on every tick. */
     @Synchronized
-    fun maybeRead(ts: ITorqueService, nowElapsed: Long, nowWall: Long) {
-        if (sessionStart == 0L) sessionStart = nowElapsed
-        val due = if (lastRead == 0L) {
-            nowElapsed - sessionStart >= FIRST_READ_MS
+    fun due(nowElapsed: Long): Boolean {
+        val start = sessionStart ?: nowElapsed.also { sessionStart = it }
+        val last = lastRead
+        val isDue = if (last == null) {
+            nowElapsed - start >= FIRST_READ_MS
         } else {
-            nowElapsed - lastRead >= READ_EVERY_MS
+            nowElapsed - last >= READ_EVERY_MS
         }
-        if (!due) return
-        lastRead = nowElapsed
+        if (isDue) lastRead = nowElapsed
+        return isDue
+    }
+
+    /**
+     * Read stored and pending codes. Runs on the session thread: each raw command waits for
+     * the adapter. A failed read changes nothing; the last known codes stay.
+     */
+    fun readNow(ts: ITorqueService, nowWall: Long) {
         val stored = read(ts, 3)
-        val pending = read(ts, 7)
-        if (stored == null && pending == null) return
-        val codes = (
-            stored.orEmpty().map { Dtc(it, false) } +
-                pending.orEmpty().filter { it !in stored.orEmpty() }.map { Dtc(it, true) }
-            )
+        if (stored == null) {
+            Timber.w("DTC: stored codes unknown (read failed); keeping the last result")
+            return
+        }
+        val pending = read(ts, 7).orEmpty()
+        val codes = stored.map { Dtc(it, false) } +
+            pending.filter { it !in stored }.map { Dtc(it, true) }
         apply(codes, nowWall)
     }
 
@@ -147,13 +187,29 @@ class DtcMonitor(
         announced = announced + fresh
     }
 
-    private fun read(ts: ITorqueService, mode: Int): List<String>? = try {
-        val answer = ts.sendCommandGetResponse("", "%02d".format(mode))
-        Timber.i("DTC: mode %02d raw %s", mode, answer?.joinToString(" | "))
-        DtcParser.parse(answer, mode).also { Timber.i("DTC: mode %02d codes $it", mode) }
-    } catch (e: Exception) {
-        Timber.e(e, "DTC: mode %02d read failed", mode)
-        null
+    /**
+     * Mode 03/07 go to 7DF, the functional OBD address every engine-related ECU answers.
+     * Torque's own last header could be another module's (a tyre PID's 720). If that fails,
+     * the request is sent once more with Torque's current header. Raw answers are logged.
+     */
+    private fun read(ts: ITorqueService, mode: Int): List<String>? {
+        for (header in listOf("7DF", "")) {
+            try {
+                val answer = ts.sendCommandGetResponse(header, "%02d".format(mode))
+                Timber.i(
+                    "DTC: mode %02d header '%s' raw %s",
+                    mode,
+                    header,
+                    answer?.joinToString(" | ")
+                )
+                val codes = DtcParser.parse(answer, mode)
+                Timber.i("DTC: mode %02d codes %s", mode, codes)
+                if (codes != null) return codes
+            } catch (e: Exception) {
+                Timber.e(e, "DTC: mode %02d header '%s' failed", mode, header)
+            }
+        }
+        return null
     }
 }
 

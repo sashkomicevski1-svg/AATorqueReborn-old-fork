@@ -54,11 +54,32 @@ class DtcTest {
 
     @Test
     fun `no codes`() {
-        assertTrue(DtcParser.parse(arrayOf("43 00"), 3).isEmpty())
-        assertTrue(DtcParser.parse(arrayOf("NO DATA"), 3).isEmpty())
-        assertTrue(DtcParser.parse(arrayOf("SEARCHING...", "NO DATA", ">"), 3).isEmpty())
-        assertTrue(DtcParser.parse(null, 3).isEmpty())
-        assertTrue(DtcParser.parse(arrayOf(), 3).isEmpty())
+        assertEquals(emptyList<String>(), DtcParser.parse(arrayOf("43 00"), 3))
+        assertEquals(emptyList<String>(), DtcParser.parse(arrayOf("NO DATA"), 3))
+        assertEquals(
+            emptyList<String>(),
+            DtcParser.parse(arrayOf("SEARCHING...", "NO DATA", ">"), 3)
+        )
+    }
+
+    @Test
+    fun `a failed request is unknown, not no codes`() {
+        assertNull(DtcParser.parse(null, 3))
+        assertNull(DtcParser.parse(arrayOf(), 3))
+        assertNull(DtcParser.parse(arrayOf("UNABLE TO CONNECT"), 3))
+        assertNull(DtcParser.parse(arrayOf("BUS BUSY"), 3))
+        assertNull(DtcParser.parse(arrayOf("?"), 3))
+        assertNull(DtcParser.parse(arrayOf("CAN ERROR"), 3))
+    }
+
+    @Test
+    fun `two ECUs without headers are read separately`() {
+        assertEquals(listOf("P2402"), DtcParser.parse(arrayOf("43 00", "43 01 24 02"), 3))
+    }
+
+    @Test
+    fun `lines joined in one string`() {
+        assertEquals(listOf("P2002"), DtcParser.parse(arrayOf("43 01 20 02\r\r>"), 3))
     }
 
     @Test
