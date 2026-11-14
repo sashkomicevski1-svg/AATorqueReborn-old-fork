@@ -26,6 +26,19 @@ It builds on [ROADMAP.md](ROADMAP.md), which keeps the OBD and DPF items.
   - phone notifications;
   - profiles and settings.
 
+## Built for any country
+
+The app is not tied to one region. Anything that depends on where the driver is takes a country
+setting, which defaults to the phone's region:
+- radio stations;
+- winter-equipment season;
+- fuel price sources;
+- border crossings;
+- legal limits such as camera warnings.
+
+North Macedonia and the Balkans are examples and the first test region, not the target market.
+Every data source below is listed with the countries it covers.
+
 ## Ground rules (not negotiable)
 
 - Nothing that shows video, games, web pages or mirroring while driving. Nothing that removes
@@ -83,7 +96,7 @@ one has passed a car test.
 
 | Module | What | Notes |
 |---|---|---|
-| Reminders | Oil and service by OBD km; registration, technical inspection, insurance and vignette by date; winter equipment season (North Macedonia: 15 Nov–15 Mar) | Spoken once at start-up; entry on the phone |
+| Reminders | Oil and service by OBD km; registration, technical inspection, insurance and vignette by date; winter equipment season from a per-country table (for example North Macedonia 15 Nov–15 Mar; the dates differ by country), editable | Spoken once at start-up; entry on the phone |
 | Fuel log | Fill-ups with real consumption and cost per km, pre-filled from OBD distance | Entry on the phone when parked |
 | Leaving the car | On disconnect: save the parking spot, remind about phone, child or pet, optional parking-meter timer | Maps on Android Auto saves parking only manually or while navigating |
 | Break reminder | Driving time plus time of day, a spoken suggestion | Complements Mazda's attention alert |
@@ -105,15 +118,15 @@ one has passed a car test.
 
 | Module | What | Data | Effort |
 |---|---|---|---|
-| Internet radio | Macedonian and Balkan stations, favourites, easy switching while driving | Radio Browser API (free, no key) | S–M |
+| Internet radio | Stations by country (any country, chosen in settings; the phone's region by default), plus genre/tag, favourites, search on the phone, easy switching while driving | Radio Browser API (free, no key, worldwide, filters by country code) | S–M |
 | Podcasts / audiobooks | Speed control, resume position | Podcast Index API (key) | M–L, crowded field |
 
 ### Wave 4: network data
 
 | Module | What | Data | Effort |
 |---|---|---|---|
-| Fuel prices | North Macedonia: today's regulated maximum and an alert when it changes. Abroad: nearby stations | ERC; Tankerkönig (DE, key and attribution), E-Control (AT), open data for FR/IT/HR | M |
-| Border waits | Balkan crossings, spoken | nakordoni.eu API (free tier with attribution; North Macedonian crossings not confirmed) | M |
+| Fuel prices | Per country, from whatever source exists: station prices where open data exists, a regulated national price where prices are set (for example North Macedonia), nothing where there is no source | Tankerkönig (DE, key and attribution), E-Control (AT), open data for FR/IT/HR, national regulators; add countries one by one | M |
+| Border waits | Where a data source exists, spoken | nakordoni.eu API for Balkan crossings (free tier with attribution); more regions as sources appear | M |
 | Route weather and road conditions | Alerts along the route | Open-Meteo; DATEX II national access points | M |
 
 ### Wave 5: the big ones (see ROADMAP)
