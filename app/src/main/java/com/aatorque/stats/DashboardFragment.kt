@@ -355,7 +355,7 @@ open class DashboardFragment : AlbumArt() {
         mBtnPrev.setOnClickListener { setScreen(-1) }
         binding.chartBtn.setOnClickListener { toggleShowChart(binding.showChart != true) }
         mTitleElement = binding.textTitle
-        mTitleElement.isSelected = true
+        // No marquee: auto-scrolling text is not allowed while driving (NHTSA, Android Auto).
         mWrapper = binding.includeWrap
         mConStatus = binding.conStatus
         gaugeViews[0] = binding.gaugeLeft

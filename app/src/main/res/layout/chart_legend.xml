@@ -33,7 +33,7 @@
             android:textSize="20sp"
             android:gravity="center_vertical"
             android:maxLines="1"
-            android:ellipsize="marquee"
+            android:ellipsize="end"
             android:typeface="@{font}"
             />
         <TextView

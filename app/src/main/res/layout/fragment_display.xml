@@ -57,7 +57,7 @@
         android:alpha="1.0"
         android:typeface="@{font}"
         android:backgroundTint="@color/car_primary"
-        android:ellipsize="marquee"
+        android:ellipsize="end"
         android:gravity="center"
         android:textAlignment="gravity"
         android:singleLine="true"

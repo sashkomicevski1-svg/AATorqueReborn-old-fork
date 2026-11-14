@@ -73,6 +73,8 @@ class MainCarActivity : CarActivity() {
         // and go (a theme change replaces one), and the binding must not go with them.
         torqueService = TorqueConnections.acquire(this)
         sessionToken = CarSession.start(this)
+        // Log which sensors the car sends (log-only; nothing depends on them yet).
+        CarSignals.start(this)
         val screenFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
@@ -208,6 +210,7 @@ class MainCarActivity : CarActivity() {
         Timber.i("Lifecycle: car activity onDestroy")
         mainScope.cancel()
         CarSession.end(sessionToken)
+        CarSignals.stop()
         // The car screen is gone, so this is the end of the Android Auto session. Quitting
         // Torque is opt-in (Developer options), off by default.
         // Release first: a binding with BIND_AUTO_CREATE that is still held would let Android

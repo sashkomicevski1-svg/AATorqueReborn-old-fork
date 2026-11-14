@@ -57,3 +57,11 @@
 }
 
 -keep,allowoptimization class com.aatorque.** { *; }
+
+# CarSignals: android.support.car.Car loads its projection loader by name
+# ("com.google.android.apps.auto.sdk.service.CarServiceLoaderGms"), and the managers are created
+# reflectively from the Android Auto app's code. Keep them whole, or the release build cannot
+# reach the car's sensors.
+-keep class android.support.car.** { *; }
+-keep class com.google.android.apps.auto.sdk.service.** { *; }
+-dontwarn android.support.car.**

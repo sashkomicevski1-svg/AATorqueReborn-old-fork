@@ -1,5 +1,23 @@
 # Changelog
 
+## AATorqueReborn 2.10.1
+
+- **Car sensor log.** The app now logs which signals the car itself sends to Android Auto:
+  - the supported sensors (speed, gear, parking brake, driving state, night, fuel, odometer...);
+  - the connection type (USB or Wi-Fi);
+  - car and head-unit info;
+  - a sample value of each sensor, at most every 15 s;
+  - every change of the driving state.
+
+  Lines start with `Signals:` in Copy logs. Nothing depends on these values yet; they decide
+  which future features can use the car's own data. Location values and the vehicle id are never
+  logged.
+- Settings asks once for the car's speed, fuel and mileage permissions, needed to read those
+  sensors.
+- Safety and legibility:
+  - no auto-scrolling (marquee) titles anywhere;
+  - the notice strip text is 24 sp (was 20).
+
 ## AATorqueReborn 2.10.0
 
 - **Alarm hold time.** "Only after it lasts (seconds)" applies a rule only once its condition has

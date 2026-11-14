@@ -7,6 +7,14 @@
     <!-- Trip summary after a drive (Android 13+ runtime permission). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="com.google.android.gms.permission.CAR_VENDOR_EXTENSION" />
+    <!-- The car's own speed, fuel and mileage sensors (CarSignals, log-only for now). The
+         projection host and the support library name them differently, so both are listed. -->
+    <uses-permission android:name="com.google.android.gms.permission.CAR_SPEED" />
+    <uses-permission android:name="com.google.android.gms.permission.CAR_FUEL" />
+    <uses-permission android:name="com.google.android.gms.permission.CAR_MILEAGE" />
+    <uses-permission android:name="android.car.permission.CAR_SPEED" />
+    <uses-permission android:name="android.car.permission.CAR_FUEL" />
+    <uses-permission android:name="android.car.permission.CAR_MILEAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <queries>

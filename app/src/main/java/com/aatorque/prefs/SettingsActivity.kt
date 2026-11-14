@@ -383,10 +383,14 @@ class SettingsActivity :
     override fun onResume() {
         super.onResume()
         val permissionsToRequest: MutableList<String> = ArrayList()
-        if (ContextCompat.checkSelfPermission(this, PERMISSION_CAR_VENDOR_EXTENSION)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            permissionsToRequest.add(PERMISSION_CAR_VENDOR_EXTENSION)
+        // The vendor extension, plus the car's speed, fuel and mileage sensors (CarSignals).
+        // A permission the phone does not define is simply denied; the log shows which work.
+        (listOf(PERMISSION_CAR_VENDOR_EXTENSION) + CAR_SENSOR_PERMISSIONS).forEach { permission ->
+            if (ContextCompat.checkSelfPermission(this, permission) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionsToRequest.add(permission)
+            }
         }
         if (permissionsToRequest.isNotEmpty()) {
             requestPermissions(permissionsToRequest.toTypedArray(), REQUEST_PERMISSIONS)
@@ -549,6 +553,11 @@ class SettingsActivity :
         private val RELEASE_TAG_PATTERN = Regex("/releases/download/([^/]+)/")
         private const val PERMISSION_CAR_VENDOR_EXTENSION =
             "com.google.android.gms.permission.CAR_VENDOR_EXTENSION"
+        private val CAR_SENSOR_PERMISSIONS = listOf(
+            "com.google.android.gms.permission.CAR_SPEED",
+            "com.google.android.gms.permission.CAR_FUEL",
+            "com.google.android.gms.permission.CAR_MILEAGE"
+        )
         const val EXPORT_MIME = "application/octet-stream"
 
         /** Where the store is copied before an import replaces it. */
