@@ -14,6 +14,7 @@ import timber.log.Timber
 class TorqueData(var display: Display) {
     companion object {
         const val PREFIX = "torque_"
+        const val MIN_STALE_MS = 2_000L
         val drawableRegex = Regex("res/drawable/(?<name>.+)\\.[a-z]+")
         val twoPlaces: NumberFormat = NumberFormat.getNumberInstance()
         val intPlaces: NumberFormat = NumberFormat.getIntegerInstance()
@@ -46,6 +47,21 @@ class TorqueData(var display: Display) {
     private var expression: Expression? = null
     var lastDataStr: String = "-"
     var hasReceivedNonZero = false
+
+    /** Torque reported a read time for this PID, so its value is real data, even 0. */
+    var hasValidRead = false
+
+    /** Torque's own timestamp (ms) of its last read of this PID; 0 = never read. */
+    var torqueUpdateTime = 0L
+
+    /** Our elapsedRealtime when [torqueUpdateTime] last changed. */
+    var lastFreshElapsed = 0L
+
+    /** Smoothed time between Torque's reads of this PID, from its own timestamps. */
+    var observedPeriodMs = 0L
+
+    /** True when Torque stopped refreshing this PID; the view greys the value out. */
+    var isStale = false
     var currentAlarm = MutableLiveData<Coloring?>()
 
     /**
@@ -76,8 +92,34 @@ class TorqueData(var display: Display) {
             updateAlarm(field)
         }
 
+    /**
+     * Track Torque's read timestamp for this PID. Stale means the timestamp has not moved for
+     * three observed periods, and at least two seconds. Elapsed time is measured on our clock
+     * only, so Torque's clock base never has to match ours.
+     */
+    fun trackUpdateTime(torqueTime: Long, nowElapsed: Long) {
+        if (torqueTime <= 0L) return
+        hasValidRead = true
+        if (torqueTime != torqueUpdateTime) {
+            if (torqueUpdateTime > 0L) {
+                val delta = torqueTime - torqueUpdateTime
+                if (delta in 1..60_000) {
+                    observedPeriodMs =
+                        if (observedPeriodMs == 0L) delta else (observedPeriodMs * 3 + delta) / 4
+                }
+            }
+            torqueUpdateTime = torqueTime
+            lastFreshElapsed = nowElapsed
+        }
+        isStale = nowElapsed - lastFreshElapsed > staleAfterMs()
+    }
+
+    fun staleAfterMs(): Long = maxOf(3 * observedPeriodMs, MIN_STALE_MS)
+
     private fun updateAlarm(field: Double) {
-        if (!hasReceivedNonZero) {
+        // An alarm needs real data. Torque reports 0 before the ECU answers, so a 0 counts
+        // only once Torque confirms it read the PID; a non-zero value always counts.
+        if (!hasValidRead && !hasReceivedNonZero) {
             return
         }
         val newValue = display.alarmsList.firstOrNull {
@@ -172,3 +214,6 @@ class TorqueData(var display: Display) {
         }
     }
 }
+
+/** Opacity of a value Torque stopped refreshing. */
+const val STALE_ALPHA = 0.4f

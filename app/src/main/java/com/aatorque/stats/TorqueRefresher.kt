@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.runInterruptible
+import org.prowl.torque.remote.ITorqueService
 import timber.log.Timber
 
 enum class ConnectStatus {
@@ -54,19 +55,56 @@ class TorqueRefresher {
     val cache = mutableMapOf<Int, HashMap<Int, TorqueData>>()
     private var refreshTimer: ScheduledFuture<*>? = null
 
+    /**
+     * How often the dashboard reads Torque. Torque returns the value its own adapter loop
+     * already fetched, so this sets how fresh the screen is, not the OBD load. A tick costs
+     * three cheap IPC calls, whatever the number of gauges.
+     */
+    @Volatile
+    var refreshIntervalMs = DEFAULT_REFRESH_INTERVAL
+        private set
+
+    /** Log a connection summary every [DIAG_EVERY_MS]; see [logDiagnostics]. */
+    @Volatile
+    var diagnostics = false
+    private var lastDiagElapsed = 0L
+
     companion object {
-        /**
-         * How often the dashboard reads Torque. Torque returns the value its own adapter loop
-         * already fetched, so this sets how fresh the screen is, not the OBD load.
-         */
-        const val REFRESH_INTERVAL = 300L
+        const val DEFAULT_REFRESH_INTERVAL = 150L
+        const val DIAG_EVERY_MS = 5_000L
 
         /**
-         * How long a needle takes to reach a new value. Deliberately shorter than
-         * [REFRESH_INTERVAL]: the needle lands, holds, then moves again. An animation that
-         * lasts the whole interval never finishes, so the needle creeps until the next sample.
+         * How long a needle takes to reach a new value. Deliberately shorter than the refresh
+         * interval: the needle lands, holds, then moves again. An animation that lasts the
+         * whole interval never finishes, so the needle creeps until the next sample.
          */
-        const val NEEDLE_ANIM_MS = 200L
+        @Volatile
+        var needleAnimMs = needleFor(DEFAULT_REFRESH_INTERVAL)
+            private set
+
+        fun needleFor(intervalMs: Long): Long = (intervalMs * 4 / 5).coerceIn(80L, 200L)
+    }
+
+    /** Change the polling rate; a running timer restarts at the new rate. */
+    fun updateInterval(intervalMs: Long, service: TorqueService) {
+        if (intervalMs == refreshIntervalMs) return
+        refreshIntervalMs = intervalMs
+        needleAnimMs = needleFor(intervalMs)
+        if (refreshTimer != null) {
+            stopRefreshTimer()
+            startTimer(service)
+        }
+    }
+
+    private fun startTimer(service: TorqueService) {
+        val pool = executor ?: ScheduledThreadPoolExecutor(1).also { executor = it }
+        refreshTimer = pool.scheduleWithFixedDelay({
+            try {
+                refreshDashboard(service)
+            } catch (e: Exception) {
+                Timber.e(e, "Dashboard refresh failed")
+            }
+        }, 0L, refreshIntervalMs, TimeUnit.MILLISECONDS)
     }
 
     fun populateQuery(pos: Int, screen: Int, query: Display): TorqueData = synchronized(data) {
@@ -92,15 +130,8 @@ class TorqueRefresher {
         } else if (refreshTimer == null) {
             // One task for the whole dashboard: every gauge is read and applied in the same
             // tick, so they share a phase and move on the same frame.
-            Timber.i("Scheduling the dashboard refresh for ${targets.size} items")
-            val pool = executor ?: ScheduledThreadPoolExecutor(1).also { executor = it }
-            refreshTimer = pool.scheduleWithFixedDelay({
-                try {
-                    refreshDashboard(service)
-                } catch (e: Exception) {
-                    Timber.e("Dashboard refresh failed", e)
-                }
-            }, 0L, REFRESH_INTERVAL, TimeUnit.MILLISECONDS)
+            Timber.i("Refreshing ${targets.size} items every ${refreshIntervalMs}ms")
+            startTimer(service)
         }
         val status = if (targets.isNotEmpty()) conWatcher.value else ConnectStatus.SETUP_GAUGE
         conWatcher.emit(status)
@@ -172,7 +203,9 @@ class TorqueRefresher {
         service.runIfConnected { ts ->
             // Ask before the read: Torque answers from its own cache after the adapter is
             // gone, so a read alone cannot tell live data from the last frame. See issue #161.
-            if (!ecuPresent(service)) {
+            val ecu = ecuPresent(service)
+            maybeLogDiagnostics(ts, targets, ecu)
+            if (!ecu) {
                 reportEcuLost()
                 return@runIfConnected
             }
@@ -192,7 +225,14 @@ class TorqueRefresher {
                 targets.forEach { doRefresh(service, it) }
                 return@runIfConnected
             }
-            applyValues(targets, values)
+            // Torque's per-PID read time tells a real 0 from "never read" and drives the stale
+            // marking. A failing call or a short answer falls back to the values alone.
+            val times = try {
+                ts.getPIDUpdateTime(pids.toTypedArray())?.takeIf { it.size == targets.size }
+            } catch (e: Exception) {
+                null
+            }
+            applyValues(targets, values, times, SystemClock.elapsedRealtime())
             handler.post {
                 targets.forEach { it.sendNotifyUpdate() }
             }
@@ -202,16 +242,70 @@ class TorqueRefresher {
 
     /**
      * Put a batched Torque result on its targets, in request order. Every successful read is
-     * published, including 0.0; only a non-zero read arms the alarm gate. See issue #158.
+     * published, including 0.0 (issue #158).
+     *
+     * With [times] from `getPIDUpdateTime`, a PID that Torque says it never read (time 0) and
+     * that reads 0 keeps showing "-" instead of a fake 0. Torque's synthetic `ff*` metrics are
+     * exempt, since it is not known whether Torque stamps them. A timestamp also arms the
+     * alarm gate and drives the stale marking.
      */
-    fun applyValues(targets: List<TorqueData>, values: DoubleArray) {
+    fun applyValues(
+        targets: List<TorqueData>,
+        values: DoubleArray,
+        times: LongArray? = null,
+        nowElapsed: Long = SystemClock.elapsedRealtime()
+    ) {
         targets.forEachIndexed { index, torqueData ->
             val value = values.getOrNull(index) ?: return@forEachIndexed
-            torqueData.lastData = value
+            val time = times?.getOrNull(index)
+            if (time != null) {
+                torqueData.trackUpdateTime(time, nowElapsed)
+                val neverRead = time <= 0L && !torqueData.hasValidRead
+                val synthetic = torqueData.pid?.startsWith(SYNTHETIC_PID_PREFIX) == true
+                if (neverRead && value == 0.0 && !synthetic) return@forEachIndexed
+            }
             if (value != 0.0) {
                 torqueData.hasReceivedNonZero = true
             }
+            torqueData.lastData = value
         }
+    }
+
+    private fun maybeLogDiagnostics(ts: ITorqueService, targets: List<TorqueData>, ecu: Boolean) {
+        if (!diagnostics) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastDiagElapsed < DIAG_EVERY_MS) return
+        lastDiagElapsed = now
+        logDiagnostics(ts, targets, ecu, now)
+    }
+
+    /**
+     * One line every few seconds that answers "which side stopped": our tick (no line at
+     * all), Torque's adapter loop (read speed 0, ages growing) or the ECU (ecu=false).
+     */
+    private fun logDiagnostics(
+        ts: ITorqueService,
+        targets: List<TorqueData>,
+        ecu: Boolean,
+        now: Long
+    ) {
+        fun safe(block: () -> Any?): String = try {
+            block().toString()
+        } catch (e: Exception) {
+            "?"
+        }
+        val ages = targets.joinToString(" ") { td ->
+            val age = if (td.lastFreshElapsed == 0L) "-" else "${now - td.lastFreshElapsed}"
+            val stale = if (td.isStale) "/STALE" else ""
+            "${td.pid}:age=$age/per=${td.observedPeriodMs}$stale"
+        }
+        Timber.i(
+            "Diag: ecu=$ecu readSpeed=${safe { ts.getPIDReadSpeed() }} " +
+                "configured=${safe { ts.getConfiguredSpeed() }} " +
+                "fullAccess=${safe { ts.hasFullPermissions() }} " +
+                "logged=${safe { ts.getNumberOfLoggedItems() }} " +
+                "tick=${refreshIntervalMs}ms $ages"
+        )
     }
 
     fun doRefresh(service: TorqueService, torqueData: TorqueData) {

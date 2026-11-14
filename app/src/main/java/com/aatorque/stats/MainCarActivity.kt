@@ -2,9 +2,13 @@
 
 package com.aatorque.stats
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.view.KeyEvent
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.aatorque.prefs.DevOptions
 import com.aatorque.prefs.dataStore
@@ -29,6 +33,13 @@ class MainCarActivity : CarActivity() {
     private var lastTheme: String? = null
     private var torqueService: TorqueService? = null
 
+    /** Logs lock and unlock, so the diagnostics show what the phone did around a stall. */
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            Timber.i("Screen: ${intent?.action?.substringAfterLast('.')}")
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (event?.action == KeyEvent.ACTION_DOWN) {
             val intent = Intent("KEY_DOWN").apply {
@@ -46,6 +57,17 @@ class MainCarActivity : CarActivity() {
         // Hold the Torque binding for the whole Android Auto session. Dashboard fragments come
         // and go (a theme change replaces one), and the binding must not go with them.
         torqueService = TorqueConnections.acquire(this)
+        val screenFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        ContextCompat.registerReceiver(
+            applicationContext,
+            screenReceiver,
+            screenFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         // Read the first value off the main thread. DataStore emits its default immediately,
         // so setupUi() runs in the next main-thread task.
         mainScope.launch {
@@ -139,6 +161,11 @@ class MainCarActivity : CarActivity() {
         }
         torqueService = null
         TorqueConnections.release()
+        try {
+            applicationContext.unregisterReceiver(screenReceiver)
+        } catch (e: IllegalArgumentException) {
+            Timber.w(e, "Screen receiver was not registered")
+        }
         super.onDestroy()
     }
 

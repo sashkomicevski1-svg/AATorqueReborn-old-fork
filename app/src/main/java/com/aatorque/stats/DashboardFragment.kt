@@ -60,8 +60,16 @@ open class DashboardFragment : AlbumArt() {
     val torqueRefresher = TorqueRefresher()
     private val devPrefListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == DevOptions.SIMULATE_VALUES) {
-                context?.let { torqueRefresher.simulate = DevOptions.simulateValues(it) }
+            val ctx = context ?: return@OnSharedPreferenceChangeListener
+            when (key) {
+                DevOptions.SIMULATE_VALUES ->
+                    torqueRefresher.simulate = DevOptions.simulateValues(ctx)
+
+                DevOptions.DIAGNOSTICS ->
+                    torqueRefresher.diagnostics = DevOptions.diagnostics(ctx)
+
+                DevOptions.REFRESH_INTERVAL_MS ->
+                    torqueRefresher.updateInterval(DevOptions.refreshIntervalMs(ctx), torqueService)
             }
         }
     private lateinit var torqueService: TorqueService
@@ -132,10 +140,12 @@ open class DashboardFragment : AlbumArt() {
         settingsViewModel = ViewModelProvider(this)[SettingsViewModel::class.java]
         val context = requireContext()
         torqueRefresher.simulate = DevOptions.simulateValues(context)
-        DevOptions.prefs(context).registerOnSharedPreferenceChangeListener(devPrefListener)
+        torqueRefresher.diagnostics = DevOptions.diagnostics(context)
         // The binding is shared and outlives this fragment: a theme change swaps the fragment
         // but must not drop Torque. See TorqueConnections.
         torqueService = TorqueConnections.acquire(context)
+        torqueRefresher.updateInterval(DevOptions.refreshIntervalMs(context), torqueService)
+        DevOptions.prefs(context).registerOnSharedPreferenceChangeListener(devPrefListener)
         if (!torqueService.lastBindOk && !torqueRefresher.simulate) {
             // bindService returns false for a missing app, a missing permission and a service
             // that refuses the caller. Only the missing package is a fact worth stating.

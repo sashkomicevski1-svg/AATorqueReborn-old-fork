@@ -38,6 +38,9 @@ class TorqueChart : Fragment() {
     }
 
     private companion object {
+        /** The chart redraws from the history ring; it does not need the gauge refresh rate. */
+        const val CHART_TICK_MS = 300L
+
         /** Visible width of the chart. Older readings are reached by dragging left. */
         const val WINDOW_MS = 60_000L
 
@@ -210,7 +213,7 @@ class TorqueChart : Fragment() {
     private val ticker = object : Runnable {
         override fun run() {
             tick()
-            handler.postDelayed(this, TorqueRefresher.REFRESH_INTERVAL)
+            handler.postDelayed(this, CHART_TICK_MS)
         }
     }
 

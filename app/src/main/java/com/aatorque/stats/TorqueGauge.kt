@@ -296,8 +296,9 @@ class TorqueGauge : Fragment() {
         val fVal = data.lastData.toFloat()
         // The needle lands well before the next sample, so it holds still instead of creeping
         // for the whole interval.
-        mClock.speedTo(fVal, TorqueRefresher.NEEDLE_ANIM_MS)
-        mRayClock.speedTo(fVal, TorqueRefresher.NEEDLE_ANIM_MS)
+        mClock.speedTo(fVal, TorqueRefresher.needleAnimMs)
+        mRayClock.speedTo(fVal, TorqueRefresher.needleAnimMs)
+        view?.alpha = if (data.isStale) STALE_ALPHA else 1f
         if (data.display.maxMarksActive == MaxControl.MAX && data.maxValue.isFinite()) {
             mMax.setSpeedAt(data.maxValue.toFloat())
             Timber.d("Setting max speed ${data.maxValue}")

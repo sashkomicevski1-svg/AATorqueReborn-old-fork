@@ -22,16 +22,20 @@ class CacheLogTree : Timber.DebugTree() {
         if (BuildConfig.DEBUG) {
             super.log(priority, "AATORQUE:${tag ?: ""}", message, t)
         }
-        logCache.add(
-            LogDesc(priority, tag, message, t)
-        )
-        while (logCache.size > KEEP_LOGS) {
-            logCache.removeFirst()
+        // Per-tick debug lines would push the lifecycle and diagnostics lines out of the
+        // copied log within seconds, so only INFO and above are kept.
+        if (priority < Log.INFO) return
+        synchronized(logCache) {
+            logCache.add(LogDesc(priority, tag, message, t))
+            while (logCache.size > KEEP_LOGS) {
+                logCache.removeFirst()
+            }
         }
     }
 
     fun logToString(): Array<String> {
-        return logCache.map {
+        val snapshot = synchronized(logCache) { logCache.toList() }
+        return snapshot.map {
             return@map try {
                 val level = when (it.priority) {
                     Log.ERROR -> "Error"

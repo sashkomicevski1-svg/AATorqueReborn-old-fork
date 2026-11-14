@@ -98,7 +98,9 @@ class TorqueDisplay : Fragment() {
 
     @SuppressLint("SetTextI18n")
     fun onUpdate(data: TorqueData) {
-        binding.value = data.lastDataStr + unit
+        // "-" means Torque has not read this PID yet; a unit after it would read as a value.
+        binding.value = if (data.lastDataStr == "-") "-" else data.lastDataStr + unit
+        binding.root.alpha = if (data.isStale) STALE_ALPHA else 1f
     }
 
     val alarmObserver = object : AwareObserver<Coloring>() {
