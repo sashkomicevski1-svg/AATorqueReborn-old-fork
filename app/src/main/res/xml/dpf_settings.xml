@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Stored in the "pid_roles" SharedPreferences (DpfSettingsFragment sets the file name). -->
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory android:title="@string/dpf_assistant">
+
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="dpfEnabled"
+            android:summary="@string/dpf_enabled_summary"
+            android:title="@string/dpf_enabled_title" />
+
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:dependency="dpfEnabled"
+            android:key="dpfVoice"
+            android:summary="@string/dpf_voice_summary"
+            android:title="@string/dpf_voice_title" />
+
+        <ListPreference
+            android:defaultValue="-1"
+            android:dependency="dpfEnabled"
+            android:key="dpfScreen"
+            android:title="@string/dpf_screen_title" />
+
+        <Preference
+            android:fragment="com.aatorque.prefs.DriveLogFragment"
+            android:key="driveLog"
+            android:persistent="false"
+            android:summary="@string/drive_log_summary"
+            android:title="@string/drive_log" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="dpfPids"
+        android:summary="@string/dpf_pids_summary"
+        android:title="@string/dpf_pids">
+
+        <ListPreference android:key="regenStatus" android:title="@string/role_regen_status" />
+        <ListPreference android:key="soot" android:title="@string/role_soot" />
+        <ListPreference android:key="sootLimit" android:title="@string/role_soot_limit" />
+        <ListPreference android:key="regenTrigger" android:title="@string/role_regen_trigger" />
+        <ListPreference android:key="regenCount" android:title="@string/role_regen_count" />
+        <ListPreference
+            android:key="distanceSinceRegen"
+            android:title="@string/role_distance_since_regen" />
+        <ListPreference android:key="totalDistance" android:title="@string/role_total_distance" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

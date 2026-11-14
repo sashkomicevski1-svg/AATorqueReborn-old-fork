@@ -80,6 +80,7 @@ class TorqueRefresher {
     companion object {
         const val DEFAULT_REFRESH_INTERVAL = 150L
         const val DIAG_EVERY_MS = 5_000L
+        const val SESSION_EVERY_MS = 2_000L
 
         /** The refresh interval in use, for views that pace their animation by it. */
         @Volatile
@@ -140,11 +141,44 @@ class TorqueRefresher {
         }
     }
 
-    /** Visible gauges plus sound watchers whose PID is not already on screen. */
-    private fun pollTargets(): List<TorqueData> = synchronized(data) {
+    /** The car session reads its own PIDs (DPF, trip) through this refresher; null = none. */
+    @Volatile
+    var session: CarSession? = null
+
+    /** TorqueData for the session's PIDs that are not already on screen, by Torque PID id. */
+    private val sessionData = HashMap<String, TorqueData>()
+
+    private var tickCount = 0L
+
+    /**
+     * Session PIDs change slowly (soot load, regeneration state), and every PID asked of
+     * Torque can slow its adapter loop for the others. They are read every
+     * [SESSION_EVERY_MS] instead of every tick.
+     */
+    private fun sessionDue(): Boolean {
+        val every = (SESSION_EVERY_MS / refreshIntervalMs).coerceAtLeast(1L)
+        return tickCount++ % every == 0L
+    }
+
+    /** Visible gauges, sound watchers not on screen, and (when due) the session's PIDs. */
+    private fun pollTargets(includeSession: Boolean = true): List<TorqueData> = synchronized(data) {
         val visible = data.values.filter { it.pid != null }
         val visiblePids = visible.mapTo(HashSet()) { it.display.pid }
-        visible + watchers.values.filter { it.pid != null && it.display.pid !in visiblePids }
+        val watched = watchers.values.filter { it.pid != null && it.display.pid !in visiblePids }
+        val known = HashSet<String?>().apply {
+            visible.forEach { add(it.pid) }
+            watched.forEach { add(it.pid) }
+        }
+        val wanted = session?.monitorPids().orEmpty().filter { it !in known }.toSet()
+        sessionData.keys.retainAll(wanted)
+        if (!includeSession) return@synchronized visible + watched
+        val extra = wanted.map { pid ->
+            sessionData.getOrPut(pid) {
+                TorqueData(Display.newBuilder().setPid(TorqueData.PREFIX + pid).build())
+                    .apply { isWatcher = true }
+            }
+        }
+        visible + watched + extra
     }
 
     suspend fun makeExecutors(service: TorqueService) {
@@ -231,7 +265,7 @@ class TorqueRefresher {
      * scheduler.
      */
     fun refreshDashboard(service: TorqueService) {
-        val targets = pollTargets()
+        val targets = pollTargets(includeSession = sessionDue())
         if (targets.isEmpty()) {
             return
         }
@@ -280,11 +314,19 @@ class TorqueRefresher {
             } catch (e: Exception) {
                 null
             }
-            applyValues(targets, values, times, SystemClock.elapsedRealtime())
+            val now = SystemClock.elapsedRealtime()
+            applyValues(targets, values, times, now)
             handler.post {
                 targets.forEach { it.sendNotifyUpdate() }
             }
             markConnected()
+            session?.let { s ->
+                try {
+                    s.onTick(ts, targets.associateBy { it.pid.orEmpty() }, now)
+                } catch (e: Exception) {
+                    Timber.e(e, "Session tick failed")
+                }
+            }
         }
     }
 
@@ -307,6 +349,7 @@ class TorqueRefresher {
             val value = values.getOrNull(index) ?: return@forEachIndexed
             val time = times?.getOrNull(index)
             if (time != null) {
+                torqueData.timesKnown = true
                 torqueData.trackUpdateTime(time, nowElapsed)
                 val neverRead = time <= 0L && !torqueData.hasValidRead
                 val synthetic = torqueData.pid?.startsWith(SYNTHETIC_PID_PREFIX) == true
@@ -315,6 +358,7 @@ class TorqueRefresher {
             if (value != 0.0) {
                 torqueData.hasReceivedNonZero = true
             }
+            torqueData.hasAnyRead = true
             torqueData.lastData = value
         }
     }
@@ -376,6 +420,7 @@ class TorqueRefresher {
                 service.onCallFailed(e)
                 return@runIfConnected
             }
+            torqueData.hasAnyRead = true
             torqueData.lastData = value
             Timber.d("Got valid $value from torque for ${torqueData.display.label}")
             // A real zero is data: speed and throttle are zero when the car stands still. The
@@ -430,6 +475,7 @@ class TorqueRefresher {
             data.clear()
             cache.clear()
             watchers.clear()
+            sessionData.clear()
         }
         pendingConnectCallback?.let { service?.removeConnectCallback(it) }
         pendingConnectCallback = null

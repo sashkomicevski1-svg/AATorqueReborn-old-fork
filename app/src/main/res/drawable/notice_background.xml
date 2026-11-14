@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The car screen's notice strip: dark, rounded, with a thin outline the code tints by level. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#dd0b0c0e" />
+    <corners android:radius="18dp" />
+    <stroke
+        android:width="2dp"
+        android:color="#ffe3242b" />
+</shape>

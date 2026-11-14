@@ -169,7 +169,8 @@ titles, so both are user-facing text.
 Both look like bugs. Both are correct. Details are in `docs/`.
 
 - **Which PIDs are offered.** User-facing lists come from `listECUSupportedPIDs()` plus
-  Torque's synthetic `ff*` ids. They never come from `listAllPIDs()` alone. See
+  Torque's synthetic `ff*` ids and custom (non Mode 01) PIDs. They never come from
+  `listAllPIDs()` alone. See
   [docs/pid-filtering.md](docs/pid-filtering.md).
 - **The app is missing from Android Auto.** This is an install-record problem, not app
   code. See [docs/aa-install-gate.md](docs/aa-install-gate.md). Do not look for it in

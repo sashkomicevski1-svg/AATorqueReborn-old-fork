@@ -33,6 +33,17 @@ class PidSelectionTest {
     }
 
     @Test
+    fun `always keeps a custom Mode 22 PID`() {
+        val all = listOf("05,0", "0c,0", "22f48b,115616640", "222a05,470605887")
+        val supported = setOf("0c,0")
+
+        assertEquals(
+            listOf("0c,0", "22f48b,115616640", "222a05,470605887"),
+            selectPids(all, supported)
+        )
+    }
+
+    @Test
     fun `keeps every supported PID and nothing else`() {
         val all = listOf("05,0", "0c,0", "11,0", "ff1001")
         val supported = setOf("05,0", "11,0")

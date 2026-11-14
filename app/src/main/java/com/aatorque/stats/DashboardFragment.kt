@@ -11,6 +11,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.RenderEffect
 import android.graphics.Shader
+import android.graphics.drawable.GradientDrawable
 import android.media.MediaMetadata
 import android.os.Build
 import android.os.Bundle
@@ -69,6 +70,16 @@ open class DashboardFragment : AlbumArt() {
             }
         }
     private lateinit var torqueService: TorqueService
+
+    /**
+     * True for the dashboard on the car screen. Only that one runs the car session (DPF
+     * assistant, notices, screen switching); the phone-side preview does not.
+     */
+    var isCarScreen = false
+
+    /** Screen to go back to after a DPF regeneration showed its own screen. */
+    private var jumpReturn: Int? = null
+    private var jumpedTo: Int? = null
 
     private lateinit var mBtnNext: ImageButton
     private lateinit var mBtnPrev: ImageButton
@@ -140,6 +151,7 @@ open class DashboardFragment : AlbumArt() {
         // The binding is shared and outlives this fragment: a theme change swaps the fragment
         // but must not drop Torque. See TorqueConnections.
         torqueService = TorqueConnections.acquire(context)
+        if (isCarScreen) torqueRefresher.session = CarSession
         torqueRefresher.updateInterval(DevOptions.refreshIntervalMs(context), torqueService)
         DevOptions.prefs(context).registerOnSharedPreferenceChangeListener(devPrefListener)
         if (!torqueService.lastBindOk && !torqueRefresher.simulate) {
@@ -413,6 +425,14 @@ open class DashboardFragment : AlbumArt() {
             handled || event.action == MotionEvent.ACTION_DOWN
         }
         configureRotaryInput()
+        if (isCarScreen) {
+            viewLifecycleOwner.lifecycleScope.launch {
+                CarNotices.shown.collect(::showNotice)
+            }
+            viewLifecycleOwner.lifecycleScope.launch {
+                CarScreenEvents.flow.collect(::onScreenEvent)
+            }
+        }
         return rootView
     }
 
@@ -680,6 +700,58 @@ open class DashboardFragment : AlbumArt() {
                 }
             } else {
                 false
+            }
+        }
+    }
+
+    private fun showNotice(notice: CarNotices.Notice?) {
+        val strip = binding.noticeStrip
+        if (notice == null) {
+            strip.visibility = View.GONE
+            return
+        }
+        strip.text = notice.text
+        val outline = when (notice.level) {
+            CarNotices.Level.ACTIVE -> 0xffe3242b.toInt()
+            CarNotices.Level.WARNING -> 0xfff2a900.toInt()
+            CarNotices.Level.INFO -> 0xff8a8f98.toInt()
+        }
+        (strip.background?.mutate() as? GradientDrawable)?.setStroke(
+            (2 * resources.displayMetrics.density).toInt(),
+            outline
+        )
+        strip.visibility = View.VISIBLE
+    }
+
+    /**
+     * Show the screen a DPF regeneration asked for, and go back afterwards unless the driver
+     * moved to another screen meanwhile.
+     */
+    private suspend fun onScreenEvent(event: CarScreenEvents.Event) {
+        val ctx = context ?: return
+        ctx.dataStore.updateData { prefs ->
+            val count = prefs.screensCount
+            if (count == 0) return@updateData prefs
+            val current = abs(prefs.currentScreen) % count
+            when (event) {
+                is CarScreenEvents.Event.Show -> {
+                    if (event.screen >= count || event.screen == current) return@updateData prefs
+                    if (jumpedTo == null) jumpReturn = current
+                    jumpedTo = event.screen
+                    prefs.toBuilder().setCurrentScreen(event.screen).build()
+                }
+
+                is CarScreenEvents.Event.Release -> {
+                    val back = jumpReturn
+                    val was = jumpedTo
+                    jumpReturn = null
+                    jumpedTo = null
+                    if (was == event.screen && current == event.screen && back != null) {
+                        prefs.toBuilder().setCurrentScreen(back).build()
+                    } else {
+                        prefs
+                    }
+                }
             }
         }
     }

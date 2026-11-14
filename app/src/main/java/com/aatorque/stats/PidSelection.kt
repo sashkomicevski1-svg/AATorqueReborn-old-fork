@@ -21,5 +21,14 @@ const val SYNTHETIC_PID_PREFIX = "ff"
  */
 fun selectPids(all: List<String>, supported: Set<String>): List<String> {
     if (supported.isEmpty()) return all
-    return all.filter { it.startsWith(SYNTHETIC_PID_PREFIX) || supported.contains(it) }
+    return all.filter {
+        it.startsWith(SYNTHETIC_PID_PREFIX) || supported.contains(it) || isCustomPid(it)
+    }
 }
+
+/**
+ * A user-defined PID, such as a manufacturer Mode 22 PID (`22f48b,115616640`). The ECU's
+ * supported-PID bitmap covers standard Mode 01 PIDs only, so custom PIDs are never in it and
+ * must always be offered. A standard PID's id is the two-digit Mode 01 number.
+ */
+fun isCustomPid(id: String): Boolean = id.substringBefore(',').length > 2

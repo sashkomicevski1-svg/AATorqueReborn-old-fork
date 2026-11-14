@@ -13,6 +13,7 @@ class App : Application() {
         Timber.plant(logTree)
         CrashDump(this, logTree).install()
         AlarmSound.init(this)
+        VoiceAlerts.init(this)
         Thread { fixAndroid14Perms() }.start()
     }
 

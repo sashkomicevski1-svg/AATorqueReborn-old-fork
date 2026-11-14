@@ -21,8 +21,12 @@ not a broken binding.
 User-facing PID lists come from the supported set, plus Torque's own synthetic metrics:
 
 ```
-pids = listAllPIDs() filtered by ( supported.contains(id) || id.startsWith("ff") )
+pids = listAllPIDs() filtered by ( supported.contains(id) || id.startsWith("ff") || isCustomPid(id) )
 ```
+
+- Custom PIDs (AATorqueReborn): an id whose part before the comma is longer than the
+  two-digit Mode 01 number, such as a manufacturer Mode 22 PID `22f48b,115616640`. The ECU's
+  supported-PID bitmap only covers Mode 01, so these are never in it and are always kept.
 
 - `ff*` ids are Torque's calculated metrics — GPS speed, acceleration, power. They never
   come from the ECU, so they are absent from `listECUSupportedPIDs()` and must be kept.

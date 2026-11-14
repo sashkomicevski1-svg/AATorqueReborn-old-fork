@@ -53,6 +53,7 @@ class MainCarActivity : CarActivity() {
         // Hold the Torque binding for the whole Android Auto session. Dashboard fragments come
         // and go (a theme change replaces one), and the binding must not go with them.
         torqueService = TorqueConnections.acquire(this)
+        CarSession.start(this)
         val screenFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_SCREEN_ON)
@@ -85,7 +86,7 @@ class MainCarActivity : CarActivity() {
 
         // The dashboard is the only in-car screen. There is no menu: the car has one screen
         // and the phone holds the settings. See issue #166.
-        val carfragment: CarFragment = DashboardFragment()
+        val carfragment: CarFragment = DashboardFragment().apply { isCarScreen = true }
         supportFragmentManager.beginTransaction()
             .add(R.id.fragment_container, carfragment, FRAGMENT_CAR)
             .commitNow()
@@ -107,7 +108,7 @@ class MainCarActivity : CarActivity() {
         if (!setLocalTheme(selectedTheme)) return
 
         val current = dashboard ?: return
-        val replacement = DashboardFragment()
+        val replacement = DashboardFragment().apply { isCarScreen = true }
         supportFragmentManager.beginTransaction()
             .remove(current)
             .add(R.id.fragment_container, replacement, FRAGMENT_CAR)
@@ -150,6 +151,7 @@ class MainCarActivity : CarActivity() {
     override fun onDestroy() {
         Timber.i("Lifecycle: car activity onDestroy")
         mainScope.cancel()
+        CarSession.end()
         // The car screen is gone, so this is the end of the Android Auto session. Quitting
         // Torque is opt-in (Developer options), off by default.
         // Release first: a binding with BIND_AUTO_CREATE that is still held would let Android

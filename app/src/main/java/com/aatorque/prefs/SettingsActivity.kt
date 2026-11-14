@@ -79,6 +79,14 @@ class SettingsActivity :
                             resources.getString(R.string.developer_options)
                         }
 
+                        is DpfSettingsFragment -> {
+                            resources.getString(R.string.dpf_assistant)
+                        }
+
+                        is DriveLogFragment -> {
+                            resources.getString(R.string.drive_log)
+                        }
+
                         else -> {
                             null
                         }

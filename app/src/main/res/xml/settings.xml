@@ -96,6 +96,13 @@
     </PreferenceCategory>
 
     <Preference
+        android:fragment="com.aatorque.prefs.DpfSettingsFragment"
+        android:key="dpfAssistant"
+        android:persistent="false"
+        android:summary="@string/dpf_assistant_summary"
+        android:title="@string/dpf_assistant" />
+
+    <Preference
         android:fragment="com.aatorque.prefs.DeveloperFragment"
         android:key="developerOptions"
         android:persistent="false"

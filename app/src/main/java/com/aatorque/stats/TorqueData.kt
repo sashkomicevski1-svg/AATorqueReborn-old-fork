@@ -63,6 +63,18 @@ class TorqueData(var display: Display) {
     /** Smoothed time between Torque's reads of this PID, from its own timestamps. */
     var observedPeriodMs = 0L
 
+    /** A value was published at least once. */
+    var hasAnyRead = false
+
+    /** Torque reports read times for this PID, so [hasValidRead] is meaningful. */
+    var timesKnown = false
+
+    /**
+     * The value is real data: Torque confirmed a read, or (when it reports no read times)
+     * a value was published.
+     */
+    fun hasData(): Boolean = if (timesKnown) hasValidRead else hasAnyRead
+
     /** Read only for its sound alarms, from a screen that is not shown; never drawn. */
     var isWatcher = false
 

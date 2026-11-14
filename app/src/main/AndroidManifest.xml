@@ -9,6 +9,10 @@
 
     <queries>
         <package android:name="org.prowl.torque" />
+        <!-- Text-to-speech engines, for spoken alerts (Android 11+ package visibility). -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application

@@ -410,6 +410,29 @@
 
         </RelativeLayout>
 
+        <!-- Car session notices: DPF regeneration in progress, fault codes, warnings. Shown
+             and filled from DashboardFragment; gone when there is nothing to say. -->
+        <TextView
+            android:id="@+id/noticeStrip"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="6dp"
+            android:background="@drawable/notice_background"
+            android:elevation="3dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:paddingStart="16dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="6dp"
+            android:textColor="#fff2f3f5"
+            android:textSize="20sp"
+            android:typeface="@{font}"
+            android:visibility="gone"
+            app:layout_constrainedWidth="true"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </layout>
