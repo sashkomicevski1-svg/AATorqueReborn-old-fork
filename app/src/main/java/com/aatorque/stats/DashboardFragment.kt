@@ -226,6 +226,14 @@ open class DashboardFragment : AlbumArt() {
                         displays[index]?.setupElement(td)
                     }
                 }
+                torqueRefresher.setSoundWatchers(
+                    it.screensList
+                        .flatMap { s -> s.gaugesList + s.displaysList }
+                        .filter { d ->
+                            !d.disabled && d.alarmsList.any { a -> a.beepOnStart || a.beepOnEnd }
+                        }
+                        .distinct()
+                )
                 if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
                     torqueRefresher.makeExecutors(torqueService)
                 }

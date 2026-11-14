@@ -29,6 +29,12 @@
             android:persistent="false"
             android:title="@string/developer_refresh_title" />
 
+        <Preference
+            android:key="testAlarmSound"
+            android:persistent="false"
+            android:summary="@string/developer_test_sound_summary"
+            android:title="@string/developer_test_sound_title" />
+
         <CheckBoxPreference
             android:defaultValue="true"
             android:key="connectionDiagnostics"

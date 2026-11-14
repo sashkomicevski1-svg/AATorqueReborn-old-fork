@@ -34,6 +34,10 @@ message Coloring{
   double value = 1;
   Operation operation = 2;
   int32 color = 3;
+  // AATorqueReborn: play a sound when this rule starts or stops matching. Additive fields;
+  // older backups read them as false.
+  bool beepOnStart = 4;
+  bool beepOnEnd = 5;
 }
 
 message Display {

@@ -63,6 +63,9 @@ class TorqueData(var display: Display) {
     /** Smoothed time between Torque's reads of this PID, from its own timestamps. */
     var observedPeriodMs = 0L
 
+    /** Read only for its sound alarms, from a screen that is not shown; never drawn. */
+    var isWatcher = false
+
     /** True when Torque stopped refreshing this PID; the view greys the value out. */
     var isStale = false
     var currentAlarm = MutableLiveData<Coloring?>()
@@ -147,7 +150,33 @@ class TorqueData(var display: Display) {
         if (currentAlarm.value?.color != newValue?.color) {
             currentAlarm.postValue(newValue)
         }
+        updateAlarmSound(newValue)
     }
+
+    /** The rule that matched at the last evaluation, for start and end sounds. */
+    private var activeRule: Coloring? = null
+    private var alarmEvaluated = false
+
+    /**
+     * Sound on a change of the matching rule. A start sound also plays on the first reading
+     * (a DPF regeneration already running when the car starts is worth knowing). An end sound
+     * needs a rule that was seen matching before, so it never plays at start-up.
+     */
+    private fun updateAlarmSound(newRule: Coloring?) {
+        val previous = activeRule
+        if (newRule != previous) {
+            if (alarmEvaluated && previous?.beepOnEnd == true) {
+                AlarmSound.trigger(soundKey(previous), AlarmSound.Kind.END)
+            }
+            if (newRule?.beepOnStart == true) {
+                AlarmSound.trigger(soundKey(newRule), AlarmSound.Kind.START)
+            }
+            activeRule = newRule
+        }
+        alarmEvaluated = true
+    }
+
+    private fun soundKey(rule: Coloring) = "${display.pid}|${rule.operation}${rule.value}"
 
     init {
         val value = display.pid
@@ -211,6 +240,8 @@ class TorqueData(var display: Display) {
     }
 
     fun sendNotifyUpdate() {
+        // A sound watcher has no view by design.
+        if (isWatcher) return
         if (notifyUpdate == null) {
             Timber.e("Cannot update, notifyUpdate is null")
         } else {

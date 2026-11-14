@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
@@ -86,6 +87,8 @@ data class FormData(
     var operation: Operation = Operation.GT,
     var value: Double = 0.0,
     var color: Int = Color(255, 0, 0, 255).toArgb(),
+    var beepOnStart: Boolean = false,
+    var beepOnEnd: Boolean = false,
     /**
      * Position among rules with the same operation and value. It is assigned on creation and
      * travels with the rule through delete and undo, so a restored rule keeps the precedence it
@@ -97,13 +100,17 @@ data class FormData(
         .setColor(color)
         .setOperation(operation)
         .setValue(value)
+        .setBeepOnStart(beepOnStart)
+        .setBeepOnEnd(beepOnEnd)
         .build()
 
     companion object {
         fun fromColoring(coloring: Coloring): FormData = FormData(
             value = coloring.value,
             operation = coloring.operation,
-            color = coloring.color
+            color = coloring.color,
+            beepOnStart = coloring.beepOnStart,
+            beepOnEnd = coloring.beepOnEnd
         )
     }
 }
@@ -264,6 +271,20 @@ fun OperationForm(state: MutableState<FormData>) {
                     }
                 })
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.value.beepOnStart,
+                onCheckedChange = { state.value = state.value.copy(beepOnStart = it) }
+            )
+            Text(text = stringResource(id = R.string.alarm_beep_start))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.value.beepOnEnd,
+                onCheckedChange = { state.value = state.value.copy(beepOnEnd = it) }
+            )
+            Text(text = stringResource(id = R.string.alarm_beep_end))
         }
         Row {
             Column(
@@ -453,7 +474,12 @@ fun VerticalReorderList(model: StateModel = viewModel()) {
             model.uiState.forEach { current ->
                 ListItem(
                     headlineContent = {
-                        Text("value ${current.operation.op} ${current.value}")
+                        val sound = if (current.beepOnStart || current.beepOnEnd) {
+                            " (" + stringResource(R.string.alarm_sound_on) + ")"
+                        } else {
+                            ""
+                        }
+                        Text("value ${current.operation.op} ${current.value}$sound")
                     },
                     leadingContent = {
                         TextButton(

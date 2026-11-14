@@ -168,6 +168,11 @@
     <string name="status_setup_gauges">Add gauges in the AA Torque settings on your phone.</string>
     <string name="status_no_torque">Torque Pro is not installed. Install it on your phone.</string>
     <string name="status_ecu_lost">Values are not live. Check the OBD adapter.</string>
+    <string name="alarm_beep_start">Beep when it starts</string>
+    <string name="alarm_beep_end">Beep when it ends</string>
+    <string name="alarm_sound_on">sound</string>
+    <string name="developer_test_sound_title">Test alarm sound</string>
+    <string name="developer_test_sound_summary">Plays the start and end beeps. With Android Auto connected, they should come from the car speakers.</string>
     <string name="status_torque_lost">Torque Pro stopped. Reconnecting…</string>
     <string name="developer_torque">Torque connection</string>
     <string name="developer_quit_torque_title">Quit Torque when Android Auto ends</string>

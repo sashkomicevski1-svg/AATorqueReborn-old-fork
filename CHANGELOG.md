@@ -1,5 +1,19 @@
 # Changelog
 
+## AATorqueReborn 2.7.0
+
+- Alarm sounds. An alarm rule can now "Beep when it starts" and/or "Beep when it ends" (in the
+  rule's dialog under Alarms). Start: three short beeps. End: a falling two-tone.
+  - Made for DPF regeneration: rule `= 1` with both boxes ticked beeps when a regeneration
+    starts and again when it ends, so you know when it is safe to switch the engine off.
+  - A start beep also plays if the condition is already true at start-up; an end beep never
+    plays at start-up.
+  - The same sound for the same rule plays at most once per 10 s.
+  - PIDs with a sound alarm are read on every screen, not only on the one they are on.
+  - The sound uses navigation-prompt audio, so Android Auto should play it on the car speakers
+    and duck the music. Developer options → "Test alarm sound" checks that in the car.
+- Backups stay compatible: the two new fields read as off in older backups.
+
 ## AATorqueReborn 2.6.1
 
 - "Mazda Style" car background (800×400, original, drawn by `tools/make_mazda_theme.py`).

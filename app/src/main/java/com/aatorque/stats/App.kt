@@ -12,6 +12,7 @@ class App : Application() {
         super.onCreate()
         Timber.plant(logTree)
         CrashDump(this, logTree).install()
+        AlarmSound.init(this)
         Thread { fixAndroid14Perms() }.start()
     }
 

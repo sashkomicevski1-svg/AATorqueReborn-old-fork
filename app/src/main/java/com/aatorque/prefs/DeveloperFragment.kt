@@ -3,7 +3,9 @@ package com.aatorque.prefs
 import android.os.Bundle
 import androidx.preference.CheckBoxPreference
 import androidx.preference.ListPreference
+import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
+import com.aatorque.stats.AlarmSound
 import com.aatorque.stats.R
 
 /**
@@ -22,6 +24,17 @@ class DeveloperFragment : PreferenceFragmentCompat() {
 
         bindCheckBox(DevOptions.QUIT_TORQUE_ON_EXIT, DevOptions.quitTorqueOnExit(context))
         bindCheckBox(DevOptions.DIAGNOSTICS, DevOptions.diagnostics(context))
+
+        findPreference<Preference>("testAlarmSound")!!.setOnPreferenceClickListener {
+            // A test press skips the cooldown so the button always answers.
+            AlarmSound.resetCooldowns()
+            AlarmSound.trigger("test", AlarmSound.Kind.START)
+            view?.postDelayed({
+                AlarmSound.resetCooldowns()
+                AlarmSound.trigger("test", AlarmSound.Kind.END)
+            }, 1_500)
+            true
+        }
 
         val refresh = findPreference<ListPreference>(DevOptions.REFRESH_INTERVAL_MS)!!
         refresh.value = DevOptions.refreshIntervalMs(context).toString()

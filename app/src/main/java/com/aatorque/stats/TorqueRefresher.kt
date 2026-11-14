@@ -125,9 +125,31 @@ class TorqueRefresher {
         torqueData
     }
 
+    /**
+     * PIDs with a sound alarm, from every dashboard screen. They are read in the same batch
+     * as the visible gauges, so an alarm can sound (DPF regeneration started) while another
+     * screen is shown. They are never drawn.
+     */
+    private val watchers = HashMap<Display, TorqueData>()
+
+    fun setSoundWatchers(displays: List<Display>) = synchronized(data) {
+        val keep = displays.toSet()
+        watchers.keys.retainAll(keep)
+        keep.forEach { display ->
+            watchers.getOrPut(display) { TorqueData(display).apply { isWatcher = true } }
+        }
+    }
+
+    /** Visible gauges plus sound watchers whose PID is not already on screen. */
+    private fun pollTargets(): List<TorqueData> = synchronized(data) {
+        val visible = data.values.filter { it.pid != null }
+        val visiblePids = visible.mapTo(HashSet()) { it.display.pid }
+        visible + watchers.values.filter { it.pid != null && it.display.pid !in visiblePids }
+    }
+
     suspend fun makeExecutors(service: TorqueService) {
         val targets = activeTargets()
-        if (targets.isEmpty()) {
+        if (pollTargets().isEmpty()) {
             stopRefreshTimer()
         } else if (refreshTimer == null) {
             // One task for the whole dashboard: every gauge is read and applied in the same
@@ -209,7 +231,7 @@ class TorqueRefresher {
      * scheduler.
      */
     fun refreshDashboard(service: TorqueService) {
-        val targets = activeTargets()
+        val targets = pollTargets()
         if (targets.isEmpty()) {
             return
         }
@@ -407,6 +429,7 @@ class TorqueRefresher {
             (data.values + cache.values.flatMap { it.values }).forEach { it.stopRefreshing(true) }
             data.clear()
             cache.clear()
+            watchers.clear()
         }
         pendingConnectCallback?.let { service?.removeConnectCallback(it) }
         pendingConnectCallback = null
