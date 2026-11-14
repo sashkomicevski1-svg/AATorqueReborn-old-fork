@@ -28,6 +28,9 @@ the moment Android Auto opens it to the moment it closes (one "session").
 - **Trip summary.** When Android Auto ends, a phone notification shows distance, time, average
   and top speed, top coolant temperature, DPF regenerations and fault codes. Trips are kept in
   Drive log.
+- The car dashboard keeps reading while another Android Auto app (Maps) is in front, so
+  alarms with sounds, the DPF assistant and the trip go on. The phone preview in Settings never
+  sounds or speaks.
 - **PID picker:** custom Mode 22 PIDs are always offered. Before, they were hidden while an
   adapter was connected.
 - Backups stay compatible: the new alarm fields read as empty in older backups.
