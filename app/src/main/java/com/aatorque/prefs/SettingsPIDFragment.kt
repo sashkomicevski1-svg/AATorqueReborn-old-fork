@@ -52,6 +52,7 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
     lateinit var maxValuesActivePref: ListPreference
     lateinit var maxMarksActivePref: ListPreference
     lateinit var highVisActivePref: CheckBoxPreference
+    lateinit var digitalPref: CheckBoxPreference
     lateinit var colorPref: ColorPreference
 
     var torqueService: TorqueServiceWrapper? = null
@@ -107,6 +108,7 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
         maxValuesActivePref = findPreference("maxValuesActive")!!
         maxMarksActivePref = findPreference("maxMarksActive")!!
         highVisActivePref = findPreference("highVisActive")!!
+        digitalPref = findPreference("digital")!!
         colorPref = findPreference("chartColor")!!
         findPreference<Preference>("indicatorColor")!!.extras.putCharSequence("prefix", prefix)
 
@@ -187,6 +189,7 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
                 maxValuesActivePref.value = display.maxValuesActive.number.toString()
                 maxMarksActivePref.value = display.maxMarksActive.number.toString()
                 highVisActivePref.isChecked = display.highVisActive
+                digitalPref.isChecked = display.digital
                 colorPref.colorValue = display.chartColor.let {
                     if (!isClock) {
                         Color.WHITE
@@ -274,6 +277,8 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
             MaxControl.forNumber(maxValuesActivePref.value.toInt())
         ).setHighVisActive(
             highVisActivePref.isChecked
+        ).setDigital(
+            digitalPref.isChecked
         ).setChartColor(
             colorPref.colorValue
         )

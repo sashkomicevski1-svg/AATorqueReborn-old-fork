@@ -43,6 +43,8 @@ message Coloring{
   string speakOnEnd = 7;
   // Switch the car screen to this gauge's dashboard while the rule matches.
   bool showScreen = 8;
+  // Blink the value while the rule matches.
+  bool blink = 9;
 }
 
 message Display {
@@ -64,6 +66,8 @@ message Display {
   bool highVisActive = 19;
   int32 chartColor = 24;
   repeated Coloring alarms = 26;
+  // AATorqueReborn: show the value as a large number instead of a dial (gauges only).
+  bool digital = 27;
 }
 
 message Screen {
@@ -87,4 +91,8 @@ message UserPreference {
   uint32 opacity = 25;
   uint32 blurArt = 26;
   uint32 darkenArt = 27;
+  // AATorqueReborn: theme used at night (empty = none), and whether night follows the
+  // clock (19:00-07:00) instead of the car's night mode.
+  string nightTheme = 28;
+  bool nightBySchedule = 29;
 }

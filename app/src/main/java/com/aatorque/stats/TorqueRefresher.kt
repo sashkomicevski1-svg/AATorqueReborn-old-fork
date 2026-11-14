@@ -186,16 +186,17 @@ class TorqueRefresher {
             visible.forEach { add(it.pid) }
             watched.forEach { add(it.pid) }
         }
-        val wanted = session?.monitorPids().orEmpty().filter { it !in known }.toSet()
-        sessionData.keys.retainAll(wanted)
-        if (!includeSession) return@synchronized visible + watched
-        val extra = wanted.map { pid ->
-            sessionData.getOrPut(pid) {
-                TorqueData(Display.newBuilder().setPid(TorqueData.PREFIX + pid).build())
-                    .apply { isWatcher = true }
-            }
-        }
-        visible + watched + extra
+        val fast = session?.fastPids().orEmpty().filter { it !in known }.toSet()
+        val wanted = session?.monitorPids().orEmpty().filter { it !in known && it !in fast }.toSet()
+        sessionData.keys.retainAll(wanted + fast)
+        val fastData = fast.map(::sessionTorqueData)
+        if (!includeSession) return@synchronized visible + watched + fastData
+        visible + watched + fastData + wanted.map(::sessionTorqueData)
+    }
+
+    private fun sessionTorqueData(pid: String): TorqueData = sessionData.getOrPut(pid) {
+        TorqueData(Display.newBuilder().setPid(TorqueData.PREFIX + pid).build())
+            .apply { isWatcher = true }
     }
 
     suspend fun makeExecutors(service: TorqueService) {

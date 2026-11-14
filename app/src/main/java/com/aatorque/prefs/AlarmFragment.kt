@@ -94,6 +94,7 @@ data class FormData(
     var speakOnStart: String = "",
     var speakOnEnd: String = "",
     var showScreen: Boolean = false,
+    var blink: Boolean = false,
     /**
      * Position among rules with the same operation and value. It is assigned on creation and
      * travels with the rule through delete and undo, so a restored rule keeps the precedence it
@@ -110,6 +111,7 @@ data class FormData(
         .setSpeakOnStart(speakOnStart.trim())
         .setSpeakOnEnd(speakOnEnd.trim())
         .setShowScreen(showScreen)
+        .setBlink(blink)
         .build()
 
     companion object {
@@ -121,7 +123,8 @@ data class FormData(
             beepOnEnd = coloring.beepOnEnd,
             speakOnStart = coloring.speakOnStart,
             speakOnEnd = coloring.speakOnEnd,
-            showScreen = coloring.showScreen
+            showScreen = coloring.showScreen,
+            blink = coloring.blink
         )
     }
 }
@@ -318,6 +321,13 @@ fun OperationForm(state: MutableState<FormData>) {
                 onCheckedChange = { state.value = state.value.copy(showScreen = it) }
             )
             Text(text = stringResource(id = R.string.alarm_show_screen))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = state.value.blink,
+                onCheckedChange = { state.value = state.value.copy(blink = it) }
+            )
+            Text(text = stringResource(id = R.string.alarm_blink))
         }
         Row {
             Column(

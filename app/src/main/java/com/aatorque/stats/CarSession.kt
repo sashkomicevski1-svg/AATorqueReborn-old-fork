@@ -50,6 +50,10 @@ object CarSession {
     @Volatile
     private var trip: TripRecorder? = null
 
+    @Volatile
+    private var accel: AccelTimer? = null
+    private var lastSpeedSample = Long.MIN_VALUE
+
     private val androidOutputs = object : DpfOutputs {
         override fun notice(key: String, notice: CarNotices.Notice?) {
             if (notice == null) CarNotices.remove(key) else CarNotices.post(key, notice)
@@ -72,6 +76,13 @@ object CarSession {
         1,
         DtcReading::toJson,
         DtcReading::fromJson
+    )
+
+    fun accelHistory(context: Context) = JsonHistory(
+        File(context.filesDir, "accel.json"),
+        100,
+        AccelResult::toJson,
+        AccelResult::fromJson
     )
 
     fun dpfHistory(context: Context) = JsonHistory(
@@ -116,6 +127,12 @@ object CarSession {
         } else {
             null
         }
+        accel = if (DpfSettings.accelEnabled(app)) {
+            AccelTimer { kind, seconds -> onAccelResult(app, kind, seconds) }
+        } else {
+            null
+        }
+        lastSpeedSample = Long.MIN_VALUE
         CarScreenEvents.reset()
         running = true
         token++
@@ -142,6 +159,7 @@ object CarSession {
         dpf = null
         dtc = null
         trip = null
+        accel = null
         CarNotices.clear()
         Timber.i("Session: ended #$token")
         // Files and the notification off the main thread.
@@ -150,6 +168,12 @@ object CarSession {
             finishTrip(endingTrip, nowElapsed)
         }
     }
+
+    private fun speedPid() = roles[PidRole.SPEED] ?: "0d,0"
+
+    /** PIDs read on every tick (the acceleration timer needs every speed reading). */
+    fun fastPids(): Collection<String> =
+        if (running && accel != null) listOf(speedPid()) else emptyList()
 
     /** PIDs read for the session's features, besides the visible gauges. */
     fun monitorPids(): Collection<String> =
@@ -175,6 +199,21 @@ object CarSession {
             if (data.hasData()) readings[role] = data.lastData
         }
         val nowWall = System.currentTimeMillis()
+        accel?.let { timer ->
+            val speed = byPid[speedPid()]
+            if (speed != null && speed.hasData()) {
+                // Torque's own read time places the reading best; our clock otherwise.
+                val sample = if (speed.timesKnown && speed.torqueUpdateTime > 0) {
+                    speed.torqueUpdateTime
+                } else {
+                    nowElapsed
+                }
+                if (sample != lastSpeedSample) {
+                    lastSpeedSample = sample
+                    timer.feed(speed.lastData, sample)
+                }
+            }
+        }
         dpf?.update(readings, nowWall, nowElapsed)
         trip?.update(readings, nowElapsed)
         val codes = dtc
@@ -218,6 +257,27 @@ object CarSession {
         Timber.w("Session: Torque rejected the session PIDs $roles; dropping the custom ones")
         roles = roles.filterKeys { it == PidRole.SPEED || it == PidRole.COOLANT }
         roleAttempts = ROLE_ATTEMPTS
+    }
+
+    private fun onAccelResult(context: Context, kind: AccelTimer.Kind, seconds: Double) {
+        val label = context.getString(
+            if (kind == AccelTimer.Kind.ZERO_100) R.string.accel_0_100 else R.string.accel_60_100
+        )
+        val text = context.getString(R.string.accel_result, label, seconds)
+        Timber.i("Accel: $text")
+        CarNotices.post(
+            "accel",
+            CarNotices.Notice(
+                text,
+                CarNotices.Level.INFO,
+                40,
+                expiresAt = SystemClock.elapsedRealtime() + 15_000
+            )
+        )
+        io.execute {
+            val history = accelHistory(context)
+            history.save(history.load() + AccelResult(kind, seconds, System.currentTimeMillis()))
+        }
     }
 
     private fun postDtcNotice(n: CarNotices.Notice?) {
@@ -265,6 +325,7 @@ object DpfSettings {
     const val ENABLED = "dpfEnabled"
     const val DTC_ENABLED = "dtcEnabled"
     const val TRIP_ENABLED = "tripEnabled"
+    const val ACCEL_ENABLED = "accelEnabled"
     const val VOICE = "dpfVoice"
     const val SCREEN = "dpfScreen"
 
@@ -276,6 +337,8 @@ object DpfSettings {
     fun dtcEnabled(context: Context) = prefs(context).getBoolean(DTC_ENABLED, true)
 
     fun tripEnabled(context: Context) = prefs(context).getBoolean(TRIP_ENABLED, true)
+
+    fun accelEnabled(context: Context) = prefs(context).getBoolean(ACCEL_ENABLED, true)
 
     fun voice(context: Context) = prefs(context).getBoolean(VOICE, true)
 

@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.core.content.ContextCompat
@@ -13,8 +14,12 @@ import com.aatorque.prefs.DevOptions
 import com.aatorque.prefs.dataStore
 import com.aatorque.prefs.mapTheme
 import com.google.android.apps.auto.sdk.CarActivity
+import java.util.Calendar
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -32,6 +37,12 @@ class MainCarActivity : CarActivity() {
     private var lastTheme: String? = null
     private var torqueService: TorqueService? = null
     private var sessionToken = 0
+
+    /** The car's night mode as Android Auto reports it in the configuration. */
+    private var carNight = false
+
+    /** Night for the theme: the car's night mode, or the clock when chosen. */
+    private val night = MutableStateFlow(false)
 
     /** Logs lock and unlock, so the diagnostics show what the phone did around a stall. */
     private val screenReceiver = object : BroadcastReceiver() {
@@ -68,17 +79,48 @@ class MainCarActivity : CarActivity() {
         )
         // Read the first value off the main thread. DataStore emits its default immediately,
         // so setupUi() runs in the next main-thread task.
+        carNight = NightTheme.isNightConfig(resources.configuration)
+        Timber.i("Night: car night mode at start $carNight")
         mainScope.launch {
             val data = dataStore.data.first()
-            setLocalTheme(data.selectedTheme)
+            night.value = NightTheme.isNight(data, carNight, hour())
+            setLocalTheme(NightTheme.effective(data, night.value))
             setupUi()
         }
         mainScope.launch {
-            dataStore.data.map {
-                it.selectedTheme
-            }.distinctUntilChanged().drop(1).collect(
-                this@MainCarActivity::recreateWithTheme
-            )
+            combine(dataStore.data, night) { prefs, isNight ->
+                NightTheme.effective(prefs, isNight)
+            }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect(this@MainCarActivity::recreateWithTheme)
+        }
+        // The clock is checked once a minute; the car's night mode arrives as a configuration
+        // change (onConfigurationChanged).
+        mainScope.launch {
+            while (true) {
+                updateNight()
+                delay(60_000)
+            }
+        }
+    }
+
+    private fun hour() = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+    private suspend fun updateNight() {
+        val prefs = dataStore.data.first()
+        val isNight = NightTheme.isNight(prefs, carNight, hour())
+        if (isNight != night.value) Timber.i("Night: now $isNight")
+        night.value = isNight
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val now = NightTheme.isNightConfig(newConfig)
+        if (now != carNight) {
+            Timber.i("Night: car night mode $now")
+            carNight = now
+            mainScope.launch { updateNight() }
         }
     }
 

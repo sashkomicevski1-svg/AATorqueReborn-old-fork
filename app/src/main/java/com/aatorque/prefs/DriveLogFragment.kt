@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
+import com.aatorque.stats.AccelTimer
 import com.aatorque.stats.CarSession
 import com.aatorque.stats.R
 import com.aatorque.stats.RegenRecord
@@ -81,6 +82,7 @@ private fun DriveLog() {
     val summary = remember(records) { RegenSummary.of(records) }
     val dtc = remember { CarSession.dtcStore(context).load().lastOrNull() }
     val trips = remember { CarSession.tripHistory(context).load().takeLast(20).reversed() }
+    val runs = remember { CarSession.accelHistory(context).load() }
     val dateFormat = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
 
     LazyColumn(modifier = Modifier.padding(16.dp)) {
@@ -104,6 +106,43 @@ private fun DriveLog() {
                         color = if (c.pending) Color(0xFFF2A900) else Color(0xFFE3242B)
                     )
                 }
+            }
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+        }
+        item {
+            Text(
+                stringResource(R.string.drive_log_accel),
+                style = MaterialTheme.typography.titleLarge
+            )
+            if (runs.isEmpty()) Text(stringResource(R.string.drive_log_no_accel))
+            AccelTimer.Kind.entries.forEach { kind ->
+                val label = stringResource(
+                    if (kind ==
+                        AccelTimer.Kind.ZERO_100
+                    ) {
+                        R.string.accel_0_100
+                    } else {
+                        R.string.accel_60_100
+                    }
+                )
+                runs.filter { it.kind == kind }.minByOrNull { it.seconds }?.let { best ->
+                    Text(stringResource(R.string.accel_best, label, best.seconds))
+                }
+            }
+            runs.takeLast(5).reversed().forEach { r ->
+                val label = stringResource(
+                    if (r.kind ==
+                        AccelTimer.Kind.ZERO_100
+                    ) {
+                        R.string.accel_0_100
+                    } else {
+                        R.string.accel_60_100
+                    }
+                )
+                Text(
+                    dateFormat.format(Date(r.wall)) + "  " +
+                        stringResource(R.string.accel_result, label, r.seconds)
+                )
             }
             Divider(modifier = Modifier.padding(vertical = 8.dp))
         }

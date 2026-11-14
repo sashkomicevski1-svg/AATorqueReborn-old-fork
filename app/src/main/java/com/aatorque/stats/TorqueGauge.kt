@@ -6,6 +6,8 @@ import android.content.res.Resources.NotFoundException
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.style.RelativeSizeSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -19,6 +21,7 @@ import com.aatorque.datastore.MaxControl
 import com.aatorque.prefs.SettingsViewModel
 import com.aatorque.stats.databinding.FragmentGaugeBinding
 import com.aatorque.utils.AwareObserver
+import com.aatorque.utils.Blinker
 import com.github.anastr.speedviewlib.RaySpeedometer
 import com.github.anastr.speedviewlib.Speedometer
 import com.github.anastr.speedviewlib.components.Section
@@ -275,6 +278,7 @@ class TorqueGauge : Fragment() {
         turnRaysEnabled(data.display.highVisActive)
         turnWholeNumbers(data.display.wholeNumbers)
         applySpeedTextFormat(data.display)
+        applyDigital(data)
 
         alarmObserver.bind(viewLifecycleOwner, data.currentAlarm)
     }
@@ -328,6 +332,10 @@ class TorqueGauge : Fragment() {
             lastStale = data.isStale
             view?.alpha = if (data.isStale) STALE_ALPHA else 1f
         }
+        if (digital) {
+            showDigital(data)
+            return
+        }
         // Torque has not read this PID yet: keep the dash instead of drawing a 0.
         if (data.lastDataStr == "-") return
         if (mClock.showDash) {
@@ -373,6 +381,42 @@ class TorqueGauge : Fragment() {
     val alarmObserver = object : AwareObserver<Coloring>() {
         override fun onChanged(value: Coloring?) {
             mClock.setAlarm(value)
+            if (digital) binding.digital.setTextColor(value?.color ?: Color.WHITE)
+            blinker?.set(false)
+            blinker = Blinker(if (digital) binding.digital else mClock).also {
+                it.set(value?.blink == true)
+            }
         }
+    }
+
+    /** The digital style: a large number with the unit under it, instead of the dial. */
+    private var digital = false
+    private var blinker: Blinker? = null
+
+    private fun applyDigital(data: TorqueData) {
+        digital = data.display.digital
+        val dialViews = listOf(mClock, mRayClock, mMax)
+        if (digital) {
+            dialViews.forEach { it.visibility = View.INVISIBLE }
+            binding.digital.visibility = View.VISIBLE
+            binding.digital.setTextColor(Color.WHITE)
+            showDigital(data)
+        } else {
+            binding.digital.visibility = View.GONE
+            mClock.visibility = View.VISIBLE
+            mMax.visibility = View.VISIBLE
+            // The ray dial's own visibility follows its setting (turnRaysEnabled).
+            mRayClock.visibility = if (rayOn) View.VISIBLE else View.INVISIBLE
+        }
+    }
+
+    private fun showDigital(data: TorqueData) {
+        val value = data.lastDataStr
+        val unit = data.display.unit.trim()
+        val text = SpannableString(if (unit.isEmpty() || value == "-") value else "$value\n$unit")
+        if (text.length > value.length) {
+            text.setSpan(RelativeSizeSpan(0.35f), value.length, text.length, 0)
+        }
+        binding.digital.text = text
     }
 }

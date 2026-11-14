@@ -87,6 +87,10 @@ class SettingsActivity :
                             resources.getString(R.string.drive_log)
                         }
 
+                        is ProfilesFragment -> {
+                            resources.getString(R.string.profiles)
+                        }
+
                         else -> {
                             null
                         }

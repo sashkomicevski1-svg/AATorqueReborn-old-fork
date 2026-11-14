@@ -28,6 +28,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
     lateinit var opacityPref: SeekBarPreference
     lateinit var darkenArtPref: SeekBarPreference
     lateinit var blurArtPref: SeekBarPreference
+    lateinit var nightThemePref: ListPreference
+    lateinit var nightSwitchPref: ListPreference
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +44,22 @@ class SettingsFragment : PreferenceFragmentCompat() {
         opacityPref = findPreference("gaugeOpacity")!!
         blurArtPref = findPreference("blurArtwork")!!
         darkenArtPref = findPreference("darkenArtwork")!!
+        nightThemePref = findPreference("nightTheme")!!
+        nightSwitchPref = findPreference("nightSwitch")!!
+        val themes = resources.getStringArray(R.array.Themes)
+        nightThemePref.entries = arrayOf(getString(R.string.pref_night_off)) + themes
+        nightThemePref.entryValues = arrayOf("") + themes
+        nightThemePref.summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
+        nightSwitchPref.summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
+        nightThemePref.setOnPreferenceChangeListener { _, newValue ->
+            updateDatastorePref { it.setNightTheme(newValue as String) }
+            nightSwitchPref.isEnabled = (newValue as String).isNotEmpty()
+            true
+        }
+        nightSwitchPref.setOnPreferenceChangeListener { _, newValue ->
+            updateDatastorePref { it.setNightBySchedule(newValue == "clock") }
+            true
+        }
         themePref.summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
         fontPref.summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
         backgroundPref.summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
@@ -128,6 +146,9 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 opacityPref.value = if (it.opacity == 0) 100 else it.opacity
                 blurArtPref.value = it.blurArt
                 darkenArtPref.value = it.darkenArt
+                nightThemePref.value = it.nightTheme
+                nightSwitchPref.value = if (it.nightBySchedule) "clock" else "car"
+                nightSwitchPref.isEnabled = it.nightTheme.isNotEmpty()
             }
         }
         lifecycleScope.launch {

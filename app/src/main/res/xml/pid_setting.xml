@@ -104,6 +104,12 @@
         />
         <CheckBoxPreference
             android:defaultValue="false"
+            android:key="digital"
+            android:persistent="false"
+            android:summary="@string/pref_digital_summary"
+            android:title="@string/pref_digital" />
+        <CheckBoxPreference
+            android:defaultValue="false"
             android:key="highVisActive"
             android:summaryOff="@string/pref_highvis_off"
             android:summaryOn="@string/pref_highvis_on"

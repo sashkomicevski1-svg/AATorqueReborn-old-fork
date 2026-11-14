@@ -168,7 +168,8 @@ class TorqueData(var display: Display) {
                 else -> false
             }
         }
-        if (currentAlarm.value?.color != newValue?.color) {
+        // The whole rule, not just its colour: two rules can share a colour but not blinking.
+        if (currentAlarm.value != newValue) {
             currentAlarm.postValue(newValue)
         }
         if (alertsEnabled) updateAlarmSound(newValue)

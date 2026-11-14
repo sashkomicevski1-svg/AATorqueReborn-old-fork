@@ -15,6 +15,7 @@ import com.aatorque.datastore.Coloring
 import com.aatorque.prefs.SettingsViewModel
 import com.aatorque.stats.databinding.FragmentDisplayBinding
 import com.aatorque.utils.AwareObserver
+import com.aatorque.utils.Blinker
 import timber.log.Timber
 
 class TorqueDisplay : Fragment() {
@@ -104,9 +105,13 @@ class TorqueDisplay : Fragment() {
         binding.root.alpha = if (data.isStale) STALE_ALPHA else 1f
     }
 
+    private var blinker: Blinker? = null
+
     val alarmObserver = object : AwareObserver<Coloring>() {
         override fun onChanged(value: Coloring?) {
             binding.alarm = value?.color
+            if (blinker == null) blinker = Blinker(binding.valueElement)
+            blinker?.set(value?.blink == true)
         }
     }
 }

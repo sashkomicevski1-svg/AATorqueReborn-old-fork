@@ -21,6 +21,16 @@
             android:title="@string/pref_theme"
             android:persistent="false"
             app:entryImages="@array/ThemesThumbs" />
+        <ListPreference
+            android:key="nightTheme"
+            android:persistent="false"
+            android:title="@string/pref_night_theme" />
+        <ListPreference
+            android:entries="@array/nightSwitchEntries"
+            android:entryValues="@array/nightSwitchValues"
+            android:key="nightSwitch"
+            android:persistent="false"
+            android:title="@string/pref_night_switch" />
         <com.aatorque.prefs.ImageListPreference
             android:entries="@array/fontEntries"
             android:entryValues="@array/fontValues"
@@ -94,6 +104,13 @@
             app:min="0"
             app:showSeekBarValue="true" />
     </PreferenceCategory>
+
+    <Preference
+        android:fragment="com.aatorque.prefs.ProfilesFragment"
+        android:key="profiles"
+        android:persistent="false"
+        android:summary="@string/profiles_summary"
+        android:title="@string/profiles" />
 
     <Preference
         android:fragment="com.aatorque.prefs.DpfSettingsFragment"
