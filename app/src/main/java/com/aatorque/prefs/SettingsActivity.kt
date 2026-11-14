@@ -92,6 +92,7 @@ class SettingsActivity :
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.settings_menu, menu)
+        menu?.findItem(R.id.action_check_updates)?.isVisible = BuildConfig.UPDATE_CHECK
         return true
     }
 
@@ -487,6 +488,10 @@ class SettingsActivity :
      *     only reports; nothing is downloaded or installed.
      */
     private fun checkUpdate(force: Boolean = false): Boolean {
+        if (!BuildConfig.UPDATE_CHECK) {
+            Timber.i("Update check is disabled in this build")
+            return true
+        }
         if (BuildConfig.DEBUG) {
             Timber.i("Skipping update check in debug build")
             return true

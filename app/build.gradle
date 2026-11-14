@@ -30,6 +30,18 @@ def versionPatch = props.getProperty("patchVersion") as Integer
 def devVersionName = project.findProperty("devVersionName")?.toString()
 def devVersionCode = project.findProperty("devVersionCode")?.toString()?.toInteger()
 def ghOwner = "YuhiAida"
+
+// AATorqueReborn release signing. The key lives outside the repository; point AATR_SIGNING
+// at a keystore.properties (storeFile, storePassword, keyAlias, keyPassword) or keep it at
+// ~/.aatorquereborn/keystore.properties. Without it, release falls back to the debug key so
+// CI and other machines still build (such an APK cannot update one signed with the real key).
+def signingPropsFile = file(System.getenv("AATR_SIGNING") ?:
+        "${System.getProperty('user.home')}/.aatorquereborn/keystore.properties")
+def signingProps = new Properties()
+if (signingPropsFile.exists()) {
+    signingPropsFile.withInputStream { signingProps.load(it) }
+}
+def hasReleaseKey = signingPropsFile.exists()
 def ghPackage = "aa-torque"
 
 
@@ -46,6 +58,9 @@ android {
             useSupportLibrary true
         }
         buildConfigField "boolean", "SIMULATE_METRICS", "false"
+        // The update check pointed at YuhiAida's releases, which this fork does not ship and
+        // which are signed with another key. Off until it points at our own releases.
+        buildConfigField "boolean", "UPDATE_CHECK", "false"
         resourceConfigurations += ['en', 'cs', 'de', 'el', 'es', 'fr', 'fr-rCA', 'it', 'nl', 'pl', 'pt', 'pt-rBR', 'ru', 'sl', 'uk', 'zh-rHK']
         // The debug build installs beside the stable app, so its label has to say which one is
         // running. A placeholder carries a literal into the manifest; a values-<locale>/app_name
@@ -60,6 +75,16 @@ android {
         // update check needs no JSON and no API quota. The API allows 60 requests per hour
         // per IP, which fails behind shared NAT or a VPN exit.
         buildConfigField "String", "RELEASE_URL", "\"https://github.com/${ghOwner}/${ghPackage}/releases/latest/download/aa-torque.apk\""
+    }
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                storeFile file(signingProps['storeFile'])
+                storePassword signingProps['storePassword']
+                keyAlias signingProps['keyAlias']
+                keyPassword signingProps['keyPassword']
+            }
+        }
     }
     buildTypes {
         debug {
@@ -83,7 +108,7 @@ android {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             resValue "string", "app_version", "${defaultConfig.versionName}"
-            signingConfig signingConfigs.debug
+            signingConfig hasReleaseKey ? signingConfigs.release : signingConfigs.debug
         }
     }
     buildFeatures {
@@ -206,7 +231,8 @@ protobuf {
     // Configures the Protobuf compilation and the protoc executable
     protoc {
         // Downloads from the repositories
-        artifact = "com.google.protobuf:protoc:3.14.0"
+        // Same version as the protobuf runtime (protobuf-java-util above).
+        artifact = "com.google.protobuf:protoc:3.25.1"
     }
 
     // Generates the java Protobuf-lite code for the Protobufs in this project

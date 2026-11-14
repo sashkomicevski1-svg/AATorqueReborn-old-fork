@@ -3,6 +3,28 @@
 [![license](https://img.shields.io/github/license/YuhiAida/aa-torque)](LICENSE.md)
 [![support](https://img.shields.io/badge/support-tip-yellow?logo=revolut)](https://revolut.me/bernarfhfo)
 
+# AATorqueReborn
+
+This is a personal fork of [YuhiAida/aa-torque](https://github.com/YuhiAida/aa-torque) 2.5.0.
+It keeps Torque Pro running, reconnects when Torque is killed, shows real zeros and stale
+values, refreshes faster, and adds a "Mazda Style" theme. Every change is listed in
+[CHANGELOG.md](CHANGELOG.md). The rest of this README is upstream's and still applies.
+
+Releases are signed with the AATorqueReborn key, so uninstall any other AA Torque build
+first. Back up your dashboards beforehand (Settings → menu → Export).
+
+**Phone settings for steady values**
+
+- Torque Pro → Settings → Plugins: turn on "Allow plugins full access".
+- Torque Pro → Settings → OBD2 Adapter Settings: turn on "Faster communication".
+- Android → Apps → Torque Pro and AA Torque → Battery: set to "Unrestricted". On Samsung, also
+  keep both out of "Sleeping apps" and "Deep sleeping apps".
+- Keep Torque's own logged sensors and dashboards small. Every PID Torque logs slows down the
+  others.
+- If values stop when the phone is locked: Developer options → "Connection diagnostics" is
+  on by default. Reproduce it, then use menu → Copy logs. The `Diag:` lines show which side
+  stopped.
+
 # Torque Plugin for Android Auto
 
 AA Torque shows the data from [Torque Pro](https://play.google.com/store/apps/details?id=org.prowl.torque)
