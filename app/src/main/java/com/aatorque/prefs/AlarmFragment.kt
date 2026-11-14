@@ -95,6 +95,7 @@ data class FormData(
     var speakOnEnd: String = "",
     var showScreen: Boolean = false,
     var blink: Boolean = false,
+    var holdSeconds: Int = 0,
     /**
      * Position among rules with the same operation and value. It is assigned on creation and
      * travels with the rule through delete and undo, so a restored rule keeps the precedence it
@@ -112,6 +113,7 @@ data class FormData(
         .setSpeakOnEnd(speakOnEnd.trim())
         .setShowScreen(showScreen)
         .setBlink(blink)
+        .setHoldSeconds(holdSeconds.coerceIn(0, 3600))
         .build()
 
     companion object {
@@ -124,7 +126,8 @@ data class FormData(
             speakOnStart = coloring.speakOnStart,
             speakOnEnd = coloring.speakOnEnd,
             showScreen = coloring.showScreen,
-            blink = coloring.blink
+            blink = coloring.blink,
+            holdSeconds = coloring.holdSeconds
         )
     }
 }
@@ -286,6 +289,15 @@ fun OperationForm(state: MutableState<FormData>) {
                     }
                 })
             }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = stringResource(id = R.string.alarm_hold),
+                modifier = Modifier.fillMaxWidth(0.6f)
+            )
+            NumberField(value = state.value.holdSeconds, onNumberChange = {
+                state.value = state.value.copy(holdSeconds = it?.toInt() ?: 0)
+            })
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(
@@ -526,7 +538,13 @@ fun VerticalReorderList(model: StateModel = viewModel()) {
                         } else {
                             ""
                         }
-                        Text("value ${current.operation.op} ${current.value}$sound")
+                        val hold = if (current.holdSeconds > 0) {
+                            " (" + stringResource(R.string.alarm_hold_short, current.holdSeconds) +
+                                ")"
+                        } else {
+                            ""
+                        }
+                        Text("value ${current.operation.op} ${current.value}$hold$sound")
                     },
                     leadingContent = {
                         TextButton(

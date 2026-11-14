@@ -1,5 +1,17 @@
 # Changelog
 
+## AATorqueReborn 2.10.0
+
+- **Alarm hold time.** "Only after it lasts (seconds)" applies a rule only once its condition has
+  held that long, so a short spike does not trigger it. While a rule waits, a lower ready rule
+  applies (amber before red).
+- **Show in chart** per gauge: leave a gauge out of the chart.
+- **Reset min/max:** a long press on a gauge in the car. A tap stays free for swiping.
+- **Export the Drive log** as CSV files in one ZIP (trips, DPF regenerations, acceleration runs,
+  fault codes), from Settings → Car assistant → Drive log.
+- The plans for what comes next, including direct OBD without Torque, are in
+  [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## AATorqueReborn 2.9.0
 
 - **Digital gauges.** In a gauge's settings, "Digital" shows the value as a large number with

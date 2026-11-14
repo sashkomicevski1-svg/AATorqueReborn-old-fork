@@ -268,6 +268,14 @@
     <string name="alarm_sound_on">alert</string>
     <string name="alarm_say_start">Say when it starts (instead of the beep)</string>
     <string name="alarm_say_end">Say when it ends (instead of the beep)</string>
+    <string name="alarm_hold">Only after it lasts (seconds)</string>
+    <string name="alarm_hold_short">after %1$d s</string>
+    <string name="pref_show_in_chart">Show in chart</string>
+    <string name="pref_show_in_chart_summary">Plot this gauge when the chart is open</string>
+    <string name="drive_log_export">Export as CSV (ZIP)</string>
+    <string name="drive_log_exported">Drive log exported</string>
+    <string name="drive_log_export_failed">Export failed</string>
+    <string name="drive_log_long_press">Tip: a long press on a gauge in the car clears its min and max.</string>
     <string name="alarm_blink">Blink while it lasts</string>
     <string name="alarm_show_screen">Switch to this screen while it lasts</string>
     <string name="developer_test_sound_title">Test alarm sound</string>

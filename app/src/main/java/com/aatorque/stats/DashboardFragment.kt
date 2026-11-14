@@ -223,7 +223,7 @@ open class DashboardFragment : AlbumArt() {
                     torqueChart.setupItems(
                         screens.gaugesList.mapIndexed { index, display ->
                             torqueRefresher.updateIfNeeded(index, screenIndex, display)
-                        }.toTypedArray()
+                        }.filter { data -> !data.display.hideInChart }.toTypedArray()
                     )
                 } else {
                     screens.gaugesList.forEachIndexed { index, display ->
@@ -392,6 +392,19 @@ open class DashboardFragment : AlbumArt() {
             GestureDetector(
                 rootView.context,
                 object : GestureDetector.SimpleOnGestureListener() {
+                    // A long press on a gauge clears its min/max. A tap stays free for the
+                    // swipes, which start on the gauges too.
+                    override fun onLongPress(e: MotionEvent) {
+                        val hit = android.graphics.Rect()
+                        gaugeViews.forEachIndexed { i, container ->
+                            if (container?.getGlobalVisibleRect(hit) == true &&
+                                hit.contains(e.rawX.toInt(), e.rawY.toInt())
+                            ) {
+                                gauges[i]?.resetMinMax()
+                            }
+                        }
+                    }
+
                     override fun onFling(
                         e1: MotionEvent?,
                         e2: MotionEvent,

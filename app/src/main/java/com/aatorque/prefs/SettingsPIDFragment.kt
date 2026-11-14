@@ -54,6 +54,7 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
     lateinit var highVisActivePref: CheckBoxPreference
     lateinit var digitalPref: CheckBoxPreference
     lateinit var colorPref: ColorPreference
+    lateinit var showInChartPref: CheckBoxPreference
 
     var torqueService: TorqueServiceWrapper? = null
 
@@ -110,6 +111,7 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
         highVisActivePref = findPreference("highVisActive")!!
         digitalPref = findPreference("digital")!!
         colorPref = findPreference("chartColor")!!
+        showInChartPref = findPreference("showInChart")!!
         findPreference<Preference>("indicatorColor")!!.extras.putCharSequence("prefix", prefix)
 
         pidPref.summaryProvider = ListPreference.SimpleSummaryProvider.getInstance()
@@ -190,6 +192,7 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
                 maxMarksActivePref.value = display.maxMarksActive.number.toString()
                 highVisActivePref.isChecked = display.highVisActive
                 digitalPref.isChecked = display.digital
+                showInChartPref.isChecked = !display.hideInChart
                 colorPref.colorValue = display.chartColor.let {
                     if (!isClock) {
                         Color.WHITE
@@ -281,6 +284,8 @@ class SettingsPIDFragment : PreferenceFragmentCompat() {
             digitalPref.isChecked
         ).setChartColor(
             colorPref.colorValue
+        ).setHideInChart(
+            !showInChartPref.isChecked
         )
         if (imagePref.value != null) {
             display = display.setIcon(imagePref.value)

@@ -229,7 +229,25 @@ class TorqueGauge : Fragment() {
         }
     }
 
+    /** The data on this gauge, for the min/max reset. */
+    private var current: TorqueData? = null
+
+    /** Forget the highest and lowest values so far (long press on the gauge). */
+    fun resetMinMax() {
+        val data = current ?: return
+        data.minValue = Double.POSITIVE_INFINITY
+        data.maxValue = Double.NEGATIVE_INFINITY
+        if (bindingReady()) {
+            mMax.setSpeedAt(mMax.minSpeed)
+            binding.limitValue = "-"
+        }
+        Timber.i("Gauge ${data.display.label}: min/max reset")
+    }
+
+    private fun bindingReady() = ::binding.isInitialized && view != null
+
     fun setupClock(data: TorqueData) {
+        current = data
         binding.visible = data.pid != null
 
         data.notifyUpdate = this::onUpdate

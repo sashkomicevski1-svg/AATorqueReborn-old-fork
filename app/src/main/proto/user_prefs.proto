@@ -45,6 +45,8 @@ message Coloring{
   bool showScreen = 8;
   // Blink the value while the rule matches.
   bool blink = 9;
+  // The rule applies only once its condition has held this many seconds (0 = at once).
+  int32 holdSeconds = 10;
 }
 
 message Display {
@@ -68,6 +70,8 @@ message Display {
   repeated Coloring alarms = 26;
   // AATorqueReborn: show the value as a large number instead of a dial (gauges only).
   bool digital = 27;
+  // Leave this gauge out of the chart (gauges only). False keeps older backups unchanged.
+  bool hideInChart = 28;
 }
 
 message Screen {

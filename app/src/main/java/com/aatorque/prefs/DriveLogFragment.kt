@@ -4,12 +4,15 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -23,6 +26,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.aatorque.stats.AccelTimer
 import com.aatorque.stats.CarSession
 import com.aatorque.stats.R
@@ -31,9 +35,44 @@ import com.aatorque.stats.TripNotifier
 import com.aatorque.ui.AppTheme
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 /** Settings → DPF assistant → Drive log: the regeneration history kept by the car session. */
 class DriveLogFragment : Fragment() {
+    /** Asks where to save the ZIP, then writes the Drive log into it. */
+    private val export = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        val context = context ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        DriveLogCsv.writeZip(
+                            out,
+                            CarSession.tripHistory(context).load(),
+                            CarSession.dpfHistory(context).load(),
+                            CarSession.accelHistory(context).load(),
+                            CarSession.dtcStore(context).load().lastOrNull()
+                        )
+                    } != null
+                } catch (e: Exception) {
+                    Timber.e(e, "Drive log export failed")
+                    false
+                }
+            }
+            Toast.makeText(
+                context,
+                if (ok) R.string.drive_log_exported else R.string.drive_log_export_failed,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -41,7 +80,9 @@ class DriveLogFragment : Fragment() {
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            AppTheme(isSystemInDarkTheme()) { DriveLog() }
+            AppTheme(isSystemInDarkTheme()) {
+                DriveLog(onExport = { export.launch("aatorque-drive-log.zip") })
+            }
         }
     }
 }
@@ -76,7 +117,7 @@ data class RegenSummary(
 }
 
 @Composable
-private fun DriveLog() {
+private fun DriveLog(onExport: () -> Unit) {
     val context = LocalContext.current
     val records = remember { CarSession.dpfHistory(context).load().reversed() }
     val summary = remember(records) { RegenSummary.of(records) }
@@ -86,6 +127,16 @@ private fun DriveLog() {
     val dateFormat = remember { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT) }
 
     LazyColumn(modifier = Modifier.padding(16.dp)) {
+        item {
+            Button(onClick = onExport, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.drive_log_export))
+            }
+            Text(
+                stringResource(R.string.drive_log_long_press),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
         item {
             Text(stringResource(R.string.dtc_title), style = MaterialTheme.typography.titleLarge)
             if (dtc == null) {

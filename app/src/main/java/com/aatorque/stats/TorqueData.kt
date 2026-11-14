@@ -15,6 +15,10 @@ class TorqueData(var display: Display) {
     companion object {
         const val PREFIX = "torque_"
         const val MIN_STALE_MS = 2_000L
+
+        /** Clock for alarm hold times; replaced in tests. */
+        @androidx.annotation.VisibleForTesting
+        var clock: () -> Long = { android.os.SystemClock.elapsedRealtime() }
         val drawableRegex = Regex("res/drawable/(?<name>.+)\\.[a-z]+")
     }
 
@@ -158,14 +162,28 @@ class TorqueData(var display: Display) {
         if (!hasValidRead && !hasReceivedNonZero) {
             return
         }
-        val newValue = display.alarmsList.firstOrNull {
-            when (it.operation) {
-                Operation.GT -> field > it.value
-                Operation.GTE -> field >= it.value
-                Operation.EQ -> field == it.value
-                Operation.LT -> field < it.value
-                Operation.LTE -> field <= it.value
+        // The first rule that matches and has held for its hold time wins. While a rule is
+        // still holding, a lower one that is ready (amber before red) applies meanwhile.
+        val now = clock()
+        var newValue: Coloring? = null
+        display.alarmsList.forEachIndexed { index, rule ->
+            val matches = when (rule.operation) {
+                Operation.GT -> field > rule.value
+                Operation.GTE -> field >= rule.value
+                Operation.EQ -> field == rule.value
+                Operation.LT -> field < rule.value
+                Operation.LTE -> field <= rule.value
                 else -> false
+            }
+            if (!matches) {
+                matchingSince.remove(index)
+                return@forEachIndexed
+            }
+            val since = matchingSince.getOrPut(index) { now }
+            if (newValue == null &&
+                (rule.holdSeconds <= 0 || now - since >= rule.holdSeconds * 1000L)
+            ) {
+                newValue = rule
             }
         }
         // The whole rule, not just its colour: two rules can share a colour but not blinking.
@@ -174,6 +192,9 @@ class TorqueData(var display: Display) {
         }
         if (alertsEnabled) updateAlarmSound(newValue)
     }
+
+    /** When each rule (by index) started matching, for its hold time. */
+    private val matchingSince = HashMap<Int, Long>()
 
     /** The rule that matched at the last evaluation, for start and end sounds. */
     private var activeRule: Coloring? = null
